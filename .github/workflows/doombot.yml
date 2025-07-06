@@ -1,2 +1,31 @@
-pip install requests beautifulsoup4 lxml language-tool-python
+name: Doombot Weekly Website Review
+
+on:
+  schedule:
+    - cron: '0 12 * * 1'  # Every Monday at 7am Central (12:00 UTC)
+  workflow_dispatch:
+
+jobs:
+  run-doombot:
+    runs-on: ubuntu-latest
+
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run grammar scan
+        run: python main.py
+
 
