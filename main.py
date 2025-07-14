@@ -1,93 +1,64 @@
+# 📘 Doombot Grammar & Continuity Review Script
+# Enhanced with location-level context and formatting for Slack
+
 import os
 import requests
-from bs4 import BeautifulSoup
-import language_tool_python
+from language_tool_python import LanguageTool
 
-# ✅ URLs to check
-URLS = [
-    "https://quickbookstraining.com/live-quickbooks-help",
-    "https://quickbookstraining.com/quickbooks-courses",
-    "https://quickbookstraining.com/",
-    "https://quickbookstraining.com/quickbooks-classes",
-    "https://quickbookstraining.com/plans-and-pricing",
-    "https://quickbookstraining.com/about-us",
-    "https://quickbookstraining.com/contact-us",
-    "https://quickbookstraining.com/quickbooks-certification",
-    "https://quickbookstraining.com/quickbooks-online-certification",
-    "https://quickbookstraining.com/quickbooks-bookkeeping-certification",
-    "https://quickbookstraining.com/quickbooks-certification-online",
-    "https://quickbookstraining.com/terms-and-conditions",
-    "https://quickbookstraining.com/privacy-policy"
-]
-
-# 🎯 Tags to scan for text blocks
-TEXT_TAGS = ['p', 'li', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'td']
-
-# 🧪 Grammar checker
-tool = language_tool_python.LanguageTool('en-US')
-
-# 📤 Slack webhook
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
-def check_page_grammar_by_block(url, tool):
-    try:
-        response = requests.get(url, timeout=10, headers={'User-Agent': 'Doombot/2.0'})
-        soup = BeautifulSoup(response.text, 'lxml')
-        elements = soup.find_all(TEXT_TAGS)
-        report_lines = [f"\n🔍 {url}"]
+PAGES = {
+    "https://quickbookstraining.com/": "Home page content here...",
+    "https://quickbookstraining.com/quickbooks-courses": "Courses page content here...",
+    "https://quickbookstraining.com/plans-and-pricing": "Pricing page content here..."
+    # Add more pages and HTML/text content here
+}
 
-        issue_count = 0
+def get_surrounding_text(text, error_offset, length, radius=40):
+    start = max(0, error_offset - radius)
+    end = min(len(text), error_offset + length + radius)
+    return text[start:end].replace("\n", " ").strip()
 
-        for elem in elements:
-            text = elem.get_text(strip=True)
-            if not text or len(text) < 30:  # Skip short or empty strings
-                continue
+def run_grammar_checks():
+    tool = LanguageTool('en-US')
+    final_results = ["\U0001f4dd *Doombot Grammar Report*\n"]
 
-            matches = tool.check(text)
+    for url, content in PAGES.items():
+        matches = tool.check(content)
+        if not matches:
+            final_results.append(f"✅ {url} - No grammar or spelling issues found.")
+            continue
 
-            for match in matches[:3]:  # Limit per element for brevity
-                tag = elem.name
-                identifier = elem.get('id') or elem.get('class') or 'no-id/class'
-                snippet = text[:80] + '...' if len(text) > 80 else text
+        final_results.append(f"🔎 {url}")
+        for match in matches:
+            issue_type = match.ruleIssueType.capitalize()
+            error_text = content[match.offset:match.offset + match.errorLength]
+            suggestion = match.replacements[0] if match.replacements else "(no suggestion)"
+            context = get_surrounding_text(content, match.offset, match.errorLength)
+            highlighted = context.replace(error_text, f"*{error_text}*")
+            final_results.append(f"❌ {issue_type}: “{error_text}” ➝ Suggested: “{suggestion}”\n🧠 Context: “…{highlighted}…”")
 
-                report_lines.append(
-                    f"- Issue in <{tag} id/class={identifier}>: \"{snippet}\"\n  ➤ {match.message} | Suggest: {match.replacements[:2]}"
-                )
-                issue_count += 1
+    report = "\n\n".join(final_results)
+    print(report)
 
-        if issue_count == 0:
-            report_lines.append("- No issues found 🎉")
+    with open("grammar_report.txt", "w", encoding="utf-8") as f:
+        f.write(report)
 
-        return "\n".join(report_lines)
+    if SLACK_WEBHOOK_URL:
+        try:
+            slack_payload = {"text": report[:3500]}
+            res = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
+            if res.status_code == 200:
+                print("\n✅ Grammar report sent to Slack.")
+            else:
+                print(f"\n⚠️ Slack error: {res.status_code} - {res.text}")
+        except Exception as e:
+            print(f"\n⚠️ Failed to send report to Slack: {e}")
+    else:
+        print("\n⚠️ Slack webhook not configured.")
 
-    except Exception as e:
-        return f"\n🔍 {url}\n- Error: {e}"
-
-# 🧾 Compile full report
-final_results = ["🕵️ Doombot Website Grammar Check with Location Context"]
-for url in URLS:
-    final_results.append(check_page_grammar_by_block(url, tool))
-
-final_report = "\n".join(final_results)
-print(final_report)
-
-with open("grammar_report.txt", "w", encoding="utf-8") as f:
-    f.write(final_report)
-
-
-# 📢 Send to Slack
-if SLACK_WEBHOOK_URL:
-    slack_payload = {"text": final_report[:3500]}  # Truncate to stay Slack-safe
-    try:
-        slack_response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
-        if slack_response.status_code == 200:
-            print("\n✅ Report sent to Slack.")
-        else:
-            print(f"\n⚠️ Slack error: {slack_response.status_code} - {slack_response.text}")
-    except Exception as slack_error:
-        print(f"\n⚠️ Failed to send to Slack: {slack_error}")
-else:
-    print("\n⚠️ Slack webhook not set. Report printed only.")
+if __name__ == "__main__":
+    run_grammar_checks()
 
 
 
