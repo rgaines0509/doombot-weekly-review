@@ -32,7 +32,6 @@ async def run_tech_checks():
             try:
                 await page.goto(url, timeout=20000)
 
-                # Test dropdown toggle
                 toggle = await page.query_selector(".dropdown-toggle")
                 if toggle:
                     await toggle.click()
@@ -44,7 +43,6 @@ async def run_tech_checks():
                 else:
                     page_report.append("⚠️ No .dropdown-toggle element found")
 
-                # Test top 10 links
                 links = await page.query_selector_all("a")
                 for link in links[:10]:
                     href = await link.get_attribute("href")
@@ -55,7 +53,6 @@ async def run_tech_checks():
                     except:
                         page_report.append(f"❌ Link not interactable: {href}")
 
-                # Check console errors
                 if console_errors:
                     page_report.append("❌ Console errors found:")
                     for err in console_errors[:3]:
@@ -81,9 +78,9 @@ async def run_tech_checks():
         with open(grammar_path, "r", encoding="utf-8") as f:
             grammar_text = f.read()
 
-    combined = f"*🧠 Doombot Grammar Report*\n{grammar_text}\n\n---\n\n{final_report}"
+    combined = f"*🧠 Doombot Grammar Report*
+{grammar_text}\n\n{final_report}"
 
-    # Send to Slack
     if SLACK_WEBHOOK_URL:
         slack_payload = {"text": combined[:3500]}
         try:
@@ -98,4 +95,3 @@ async def run_tech_checks():
         print("\n⚠️ Slack webhook URL not set. Report printed only.")
 
 if __name__ == "__main__":
-    asyncio.run(run_tech_checks())
