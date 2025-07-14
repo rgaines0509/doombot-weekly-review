@@ -2,7 +2,8 @@ name: Doombot Weekly Website Review
 
 on:
   schedule:
-    - cron: '0 12 * * 1'  # Every Monday at 7am Central (12:00 UTC)
+    - cron: "0 10 * * 1"
+
   workflow_dispatch:
 
 jobs:
