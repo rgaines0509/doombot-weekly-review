@@ -71,6 +71,10 @@ for url in URLS:
 final_report = "\n".join(final_results)
 print(final_report)
 
+with open("grammar_report.txt", "w", encoding="utf-8") as f:
+    f.write(final_report)
+
+
 # 📢 Send to Slack
 if SLACK_WEBHOOK_URL:
     slack_payload = {"text": final_report[:3500]}  # Truncate to stay Slack-safe
