@@ -1,3 +1,10 @@
+print("✅ tech_check.py script loaded successfully")
+PAGES = [
+    "https://quickbookstraining.com/",
+    "https://example.com/"  # Test marker URL
+    # ... rest of your URLs
+]
+
 # 🛠️ Doombot Tech Check Script (Enhanced with Debugging)
 import httpx
 import time
