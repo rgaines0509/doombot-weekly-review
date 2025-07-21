@@ -2,8 +2,7 @@ name: Doombot Weekly Website Review
 
 on:
   schedule:
-    - cron: "0 10 * * 1"
-
+    - cron: "0 10 * * 1"  # 5:00am Central
   workflow_dispatch:
 
 jobs:
@@ -26,10 +25,11 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-- name: Run Grammar & Tech Checks
-  run: |
-    python main.py
-    python tech_check.py
+      - name: Run Grammar & Tech Checks
+        run: |
+          python main.py
+          python tech_check.py
+
 
 
 
