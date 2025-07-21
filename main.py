@@ -1,12 +1,11 @@
-# 📘 Doombot Grammar & Tech Check Script (Improved Accuracy + No Slack Post)
-
+# 📘 Doombot Grammar & Tech Check Script (with httpx)
 import os
-import requests
 import subprocess
+import httpx
 from bs4 import BeautifulSoup
 from language_tool_python import LanguageTool
 
-# Slack is loaded but unused for this test version
+# Slack webhook is loaded but unused for this version
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
 URLS = [
@@ -25,16 +24,20 @@ def fetch_page_text(url):
     }
 
     try:
-        res = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
-        print(f"[DEBUG] {url} - Status: {res.status_code}, Final URL: {res.url}")
-        res.raise_for_status()  # Raise exception if status is 4xx/5xx
+        with httpx.Client(http2=True, headers=headers, timeout=10, follow_redirects=True) as client:
+            res = client.get(url)
+            print(f"[DEBUG] {url} - Status: {res.status_code} - Final URL: {res.url}")
+            res.raise_for_status()
+            soup = BeautifulSoup(res.text, "lxml")
+            return soup.get_text(separator=" ", strip=True)
 
-        soup = BeautifulSoup(res.text, 'lxml')
-        return soup.get_text(separator=' ', strip=True)
-
-    except requests.exceptions.RequestException as e:
-        print(f"[ERROR] Could not fetch {url}: {e}")
+    except httpx.RequestError as e:
+        print(f"[ERROR] Request failed for {url}: {e}")
         return f"[Error fetching page: {e}]"
+
+    except httpx.HTTPStatusError as e:
+        print(f"[ERROR] HTTP error for {url}: {e.response.status_code}")
+        return f"[HTTP error fetching page: {e.response.status_code}]"
 
 def run_grammar_checks():
     tool = LanguageTool('en-US')
@@ -47,7 +50,7 @@ def run_grammar_checks():
         if not matches:
             output.append("✅ No grammar issues found.")
             continue
-        for match in matches[:5]:  # Limit output
+        for match in matches[:5]:
             error_text = content[match.offset:match.offset + match.errorLength]
             suggestion = match.replacements[0] if match.replacements else "(no suggestion)"
             context = content[max(0, match.offset - 40):match.offset + match.errorLength + 40]
@@ -67,9 +70,10 @@ if __name__ == "__main__":
     tech_report = run_tech_check()
     full_report = f"{grammar_report}\n\n{tech_report}"
 
-    # Output to console only
-    print(full_report)
-    print("\n🚫 Slack post disabled for this run.")
+    print(full_report)  # Only prints to GitHub Actions log
+
+    # Do NOT post to Slack in this test version
+    print("\n🚫 Slack post disabled for test run.")
 
 
 
