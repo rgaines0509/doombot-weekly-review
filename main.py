@@ -1,4 +1,6 @@
 # 📘 Doombot Grammar & Tech Check Script (with httpx)
+print("🔍 Using tech_check.py from:", os.path.abspath("tech_check.py"))
+
 import os
 import subprocess
 import httpx
