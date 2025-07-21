@@ -1,3 +1,9 @@
+print("🔍 Running tech_check.py from:", __file__)
+
+PAGES = [
+    "https://quickbookstraining.com/",
+    ...
+]
 # 🛠️ Doombot Tech Check Script (Standalone with httpx & debugging)
 
 import httpx
