@@ -66,7 +66,10 @@ def run_grammar_checks() -> str:
 
 def run_tech_check() -> str:
     print("🧪 Running doombot_techcheck_v2.py …")
-   subprocess.run(["python", "tech_check.py"], capture_output=True, text=True, check=True)
+ print("🚨 RUNNING MANUAL TECH CHECK")
+from tech_check import run_tech_check
+print(run_tech_check())
+
     return result.stdout or result.stderr
 
 
