@@ -1,5 +1,4 @@
-# 🛠️ Doomprint("🧪 Loaded: This is the latest tech_check.py!")
-bot Tech Check Script (Enhanced with Debugging)
+# 🛠️ Doombot Tech Check Script (Enhanced with Debugging)
 import httpx
 import time
 
@@ -21,7 +20,6 @@ PAGES = [
     "https://quickbookstraining.com/terms-and-conditions",
     "https://quickbookstraining.com/privacy-policy"
 ]
-
 
 HEADERS = {
     "User-Agent": (
@@ -51,5 +49,7 @@ def run_tech_check():
 
 if __name__ == "__main__":
     run_tech_check()
+Fix: missing commas in PAGES list for tech_check.py
+
 
 
