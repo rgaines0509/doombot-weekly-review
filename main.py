@@ -61,6 +61,10 @@ def run_grammar_checks():
     return "\n".join(output)
 
 def run_tech_check():
+with open("tech_check.py", "r") as f:
+    print("\n🔍 DEBUG: tech_check.py content:")
+    print(f.read())
+
     try:
         result = subprocess.run(["python", "tech_check.py"], capture_output=True, text=True, check=True)
         return f"\n🛠️ *Doombot Tech Check Output:*\n{result.stdout}"
