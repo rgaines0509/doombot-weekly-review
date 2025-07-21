@@ -11,7 +11,7 @@ PAGES = [
     "https://quickbookstraining.com/about-us",
     "https://quickbookstraining.com/contact-us",
     "https://quickbookstraining.com/quickbooks-certification",
-    "https://quickbookstraining.com/quickbooks-online-certification"
+    "https://quickbookstraining.com/quickbooks-online-certification",
     "https://quickbookstraining.com/quickbooks-desktop-certification",
     "https://quickbookstraining.com/quickbooks-bookkeeping-certification",
     "https://quickbookstraining.com/quickbooks-certification-online",
