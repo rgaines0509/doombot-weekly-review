@@ -1,4 +1,5 @@
-# 🛠️ Doombot Tech Check Script (Enhanced with Debugging)
+# 🛠️ Doomprint("🧪 Loaded: This is the latest tech_check.py!")
+bot Tech Check Script (Enhanced with Debugging)
 import httpx
 import time
 
