@@ -1,64 +1,63 @@
-# 📘 Doombot Grammar & Continuity + Tech Check Script
-# Slack temporarily disabled for testing
-
+# 📘 Doombot Grammar & Tech Check Script (No Slack)
 import os
 import requests
 import subprocess
+from bs4 import BeautifulSoup
 from language_tool_python import LanguageTool
 
+# Slack webhook is loaded but unused
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
-PAGES = {
-    "https://quickbookstraining.com/": "Home page content here...",
-    "https://quickbookstraining.com/quickbooks-courses": "Courses page content here...",
-    "https://quickbookstraining.com/plans-and-pricing": "Pricing page content here..."
-    # Add more pages and HTML/text content here
-}
+URLS = [
+    "https://quickbookstraining.com/",
+    "https://quickbookstraining.com/quickbooks-courses",
+    "https://quickbookstraining.com/plans-and-pricing"
+]
 
-def get_surrounding_text(text, error_offset, length, radius=40):
-    start = max(0, error_offset - radius)
-    end = min(len(text), error_offset + length + radius)
-    return text[start:end].replace("\n", " ").strip()
+def fetch_page_text(url):
+    try:
+        res = requests.get(url, timeout=10, headers={'User-Agent': 'Doombot/1.0'})
+        soup = BeautifulSoup(res.text, 'lxml')
+        return soup.get_text(separator=' ', strip=True)
+    except Exception as e:
+        return f"[Error fetching page: {e}]"
 
 def run_grammar_checks():
     tool = LanguageTool('en-US')
-    final_results = ["\U0001f4dd *Doombot Grammar Report*\n"]
+    output = ["🧠 *Doombot Grammar Report*"]
 
-    for url, content in PAGES.items():
+    for url in URLS:
+        content = fetch_page_text(url)
         matches = tool.check(content)
+        output.append(f"\n🔗 {url}")
         if not matches:
-            final_results.append(f"✅ {url} - No grammar or spelling issues found.")
+            output.append("✅ No grammar issues found.")
             continue
-
-        final_results.append(f"🔎 {url}")
-        for match in matches:
-            issue_type = match.ruleIssueType.capitalize()
+        for match in matches[:5]:  # Limit for readability
             error_text = content[match.offset:match.offset + match.errorLength]
             suggestion = match.replacements[0] if match.replacements else "(no suggestion)"
-            context = get_surrounding_text(content, match.offset, match.errorLength)
-            highlighted = context.replace(error_text, f"*{error_text}*")
-            final_results.append(f"❌ {issue_type}: “{error_text}” ➝ Suggested: “{suggestion}”\n🧠 Context: “…{highlighted}…”")
-
-    report = "\n\n".join(final_results)
-    print(report)
-
-    with open("grammar_report.txt", "w", encoding="utf-8") as f:
-        f.write(report)
-
-    print("\n⚠️ Slack integration disabled for grammar report (test mode).")
+            context = content[max(0, match.offset - 40):match.offset + match.errorLength + 40]
+            context = context.replace("\n", " ").replace(error_text, f"*{error_text}*")
+            output.append(f"❌ {match.ruleIssueType.capitalize()}: “{error_text}” ➝ “{suggestion}”\n💬 Context: …{context}…")
+    return "\n".join(output)
 
 def run_tech_check():
     try:
         result = subprocess.run(["python", "tech_check.py"], capture_output=True, text=True, check=True)
-        print("\n🛠️ Tech check output:")
-        print(result.stdout)
+        return f"\n🛠️ *Doombot Tech Check Output:*\n{result.stdout}"
     except subprocess.CalledProcessError as e:
-        print("\n⚠️ Tech check script failed:")
-        print(e.output)
+        return f"\n⚠️ Tech Check Failed:\n{e.output or e.stderr}"
 
 if __name__ == "__main__":
-    run_grammar_checks()
-    run_tech_check()
+    grammar_report = run_grammar_checks()
+    tech_report = run_tech_check()
+    full_report = f"{grammar_report}\n\n{tech_report}"
+
+    print(full_report)  # Only prints to GitHub Actions log
+
+    # Do NOT post to Slack in this test version
+    print("\n🚫 Slack post disabled for test run.")
+
 
 
 
