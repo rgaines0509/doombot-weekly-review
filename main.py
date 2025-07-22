@@ -1,25 +1,30 @@
 # main.py
+
 import logging
 from tech_check_v2 import run_tech_check
 
+# Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s — %(levelname)s — %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    force=True  # overwrite GH Actions default formatter
+    datefmt="%Y-%m-%d %H:%M:%S"
 )
 
 def main():
-    logging.info("🚀 Doombot weekly run start")
+    logging.info("🚀 Doombot Weekly Website Review starting...")
+
     try:
+        logging.info("🔍 Running technical check (from tech_check_v2.py)...")
         run_tech_check()
-        logging.info("🏁 Doombot run finished (success)")
+        logging.info("✅ Technical check completed.")
     except Exception as e:
-        logging.exception(f"🔥 Doombot failed: {e}")
-        raise  # fail the workflow loudly
+        logging.error(f"❌ Tech check failed: {e}")
+    finally:
+        logging.info("🏁 Doombot Weekly Review finished.")
 
 if __name__ == "__main__":
     main()
+
 
 
 
