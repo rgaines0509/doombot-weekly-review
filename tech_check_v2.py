@@ -1,105 +1,108 @@
 # tech_check_v2.py
-
-import os
-import socket
-import shutil
-import platform
-import logging
+import os, socket, shutil, platform, logging, subprocess, sys, textwrap
 import requests
 from bs4 import BeautifulSoup
-import language_tool_python
 
-# ---------- TECH CHECKS ----------
-
+# ---------- Tech checks ----------
 def check_python_version():
-    version = platform.python_version()
-    logging.info(f"🐍 Python version: {version}")
-    if tuple(map(int, version.split("."))) < (3, 8):
-        raise EnvironmentError("Python 3.8+ is required.")
+    ver = platform.python_version()
+    logging.info(f"🐍 Python {ver}")
+    if tuple(map(int, ver.split("."))) < (3, 8):
+        raise EnvironmentError("Python 3.8+ required")
 
-def check_disk_space():
-    total, used, free = shutil.disk_usage("/")
-    free_gb = free // (2**30)
-    logging.info(f"💾 Disk space free: {free_gb} GB")
+def check_disk():
+    free_gb = shutil.disk_usage("/").free // 2**30
+    logging.info(f"💾 Free disk: {free_gb} GB")
     if free_gb < 2:
-        raise OSError("Not enough disk space (less than 2 GB free).")
+        raise OSError("Less than 2 GB free")
 
-def check_network_connectivity(host="8.8.8.8", port=53, timeout=3):
+def check_network(host="8.8.8.8", port=53):
     try:
-        socket.setdefaulttimeout(timeout)
-        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
-        logging.info("🌐 Network connectivity: OK")
+        socket.create_connection((host, port), timeout=3)
+        logging.info("🌐 Network OK")
     except Exception:
-        raise ConnectionError("Unable to reach the internet (8.8.8.8)")
+        raise ConnectionError("No outbound network")
 
-def check_env_vars(required_vars):
-    missing = [var for var in required_vars if os.getenv(var) is None]
+def check_env(required):
+    missing = [v for v in required if os.getenv(v) is None]
     if missing:
-        raise EnvironmentError(f"Missing required environment variables: {', '.join(missing)}")
-    logging.info("🔐 Environment variables check: OK")
+        raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
+    logging.info("🔐 Env vars present")
 
-# ---------- WEBSITE GRAMMAR CHECK ----------
-
-def fetch_text_from_url(url):
+# ---------- Lightweight grammar check ----------
+def ensure_language_tool():
+    """
+    language_tool_python pulls a 200 MB JAR the first time.
+    We import lazily so other parts can still run if it fails.
+    """
     try:
-        res = requests.get(url, timeout=10)
-        soup = BeautifulSoup(res.text, "html.parser")
+        import language_tool_python  # noqa: F401
+    except ImportError:
+        logging.info("📦 Installing language-tool-python on the fly…")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "language_tool_python"])
+        import language_tool_python  # type: ignore
 
-        # Remove nav, script, style, footer
-        for tag in soup(["nav", "script", "style", "footer"]):
-            tag.decompose()
+def grammar_issues(text, limit=10):
+    ensure_language_tool()
+    import language_tool_python  # type: ignore
+    tool = language_tool_python.LanguageTool("en-US")
+    matches = tool.check(text)
+    issues = []
+    for m in matches[:limit]:
+        context = m.context.strip()
+        sug = ", ".join(m.replacements[:3]) or "—"
+        issues.append(f"• {m.ruleId}: “{context}” → {sug}")
+    return issues
 
-        text = soup.get_text(separator=" ", strip=True)
-        return text[:20000]  # limit to avoid overload
+# ---------- Website scanner ----------
+def fetch_text(url):
+    try:
+        html = requests.get(url, timeout=15).text
     except Exception as e:
-        logging.warning(f"⚠️ Failed to fetch {url}: {e}")
-        return ""
+        return "", f"⚠️ {url} — fetch error: {e}"
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "nav", "footer"]):
+        tag.decompose()
+    return soup.get_text(separator=" ", strip=True)[:20000], ""
 
-def run_website_grammar_report(urls):
-    tool = language_tool_python.LanguageTool('en-US')
-    full_report = []
-
+def run_site_report(urls):
+    logging.info("📝 Starting website grammar scan…")
+    report_lines = []
     for url in urls:
-        logging.info(f"🔎 Scanning {url}")
-        text = fetch_text_from_url(url)
-        if not text:
+        txt, err = fetch_text(url)
+        if err:
+            report_lines.append(err)
             continue
-
-        matches = tool.check(text)
-        if matches:
-            report_lines = [f"• {m.ruleId} at '{m.context.strip()}' — Suggestion: {m.replacements}" for m in matches[:10]]
-            full_report.append(f"\n🔍 Issues found on {url}:\n" + "\n".join(report_lines))
+        issues = grammar_issues(txt)
+        if issues:
+            report_lines.append(f"\n🔎 Issues on {url}:")
+            report_lines.extend(issues)
         else:
-            full_report.append(f"\n✅ No issues found on {url}")
+            report_lines.append(f"✅ {url} — no issues found")
+    log_block = "\n".join(report_lines) or "✅ No issues on any page"
+    logging.info("\n" + textwrap.dedent(f"""
+        ===============================
+        📝 WEBSITE GRAMMAR REPORT
+        ===============================
+        {log_block}
+        ===============================
+    """).strip())
 
-    print("\n📝 Website Grammar Report")
-    print("----------------------------")
-    print("\n".join(full_report))
-    print("\n✔️ Grammar check complete.")
-
-# ---------- MASTER RUNNER ----------
-
+# ---------- Master runner ----------
 def run_tech_check():
-    logging.info("🚦 Starting tech_check_v2 diagnostic...")
-
+    logging.info("🚦 tech_check_v2 starting…")
+    # System checks
     check_python_version()
-    check_disk_space()
-    check_network_connectivity()
+    check_disk()
+    check_network()
+    check_env(["GOOGLE_API_KEY", "WOOCOMMERCE_KEY", "WOOCOMMERCE_SECRET"])
+    logging.info("✅ System tech checks passed")
 
-    required_envs = [
-        "GOOGLE_API_KEY",     # Replace with actual env vars if needed
-        "WOOCOMMERCE_KEY",
-        "WOOCOMMERCE_SECRET"
-    ]
-    check_env_vars(required_envs)
-
-    logging.info("✅ All tech checks passed successfully.")
-
-    # Run the grammar/spelling review for your site
-    urls_to_check = [
-        "https://quickbookstraining.com",  # Replace or expand as needed
+    # Website report
+    urls = [
+        "https://quickbookstraining.com",
         "https://quickbookstraining.com/classes",
-        "https://quickbookstraining.com/contact"
+        "https://quickbookstraining.com/contact",
     ]
-    run_website_grammar_report(urls_to_check)
+    run_site_report(urls)
 
