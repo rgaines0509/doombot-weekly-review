@@ -1,0 +1,27 @@
+name: Doombot Weekly Website Review (Clean)
+
+on:
+  schedule:
+    - cron: "0 10 * * 1"  # 5am Central
+  workflow_dispatch:
+
+jobs:
+  run-doombot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Doombot (grammar + tech check)
+        run: |
+          python main.py
