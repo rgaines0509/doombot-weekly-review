@@ -11,19 +11,13 @@ jobs:
     - name: 📥 Checkout repository
       uses: actions/checkout@v3
 
-    - name: 🧾 List all Python files before cleanup
+    - name: 🧹 Hard reset Python files
       run: |
-        echo "📂 Scanning for .py files in the repo..."
-        find . -name "*.py"
-        echo "🔍 If you see tech_check.py here — it still lives."
-
-    - name: 💣 Purge old tech_check.py + bytecode
-      run: |
-        echo "🔥 Removing tech_check.py and Python caches..."
+        echo "🔥 Deleting tech_check.py and any cache"
         rm -f tech_check.py
         rm -rf __pycache__/
         find . -name "*.pyc" -delete
-        echo "✅ Cleanup complete"
+        echo "✅ Done."
 
     - name: 🐍 Set up Python
       uses: actions/setup-python@v4
@@ -35,8 +29,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: 🚀 Run Doombot main script
+    - name: 🚀 Run Doombot
       run: python main.py
+
 
 
 
