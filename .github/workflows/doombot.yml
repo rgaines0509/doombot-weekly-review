@@ -2,7 +2,7 @@ name: Doombot Weekly Website Review
 
 on:
   schedule:
-    - cron: "0 10 * * 1"  # 5:00am Central
+    - cron: "0 10 * * 1"  # Runs every Monday at 5am Central (10:00 UTC)
   workflow_dispatch:
 
 jobs:
@@ -25,9 +25,10 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-- name: Run Grammar & Tech Checks
-  run: |
-    python main.py         # ✅ main.py now internally calls tech_check_v2.py
+      - name: Run Grammar & Tech Checks
+        run: |
+          python main.py
+
 
 
 
