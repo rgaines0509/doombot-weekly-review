@@ -1,58 +1,57 @@
-print("🔍 Running tech_check.py from:", __file__)
+# tech_check_v2.py
 
-PAGES = [
-    "https://quickbookstraining.com/",
-    ...
-]
-# 🛠️ Doombot Tech Check Script (Standalone with httpx & debugging)
+import os
+import socket
+import shutil
+import platform
+import logging
 
-import httpx
-import time
+def check_python_version():
+    version = platform.python_version()
+    logging.info(f"🐍 Python version: {version}")
+    if version < "3.8":
+        raise EnvironmentError("Python 3.8+ is required.")
 
-PAGES = [
-    "https://quickbookstraining.com/",
-    "https://quickbookstraining.com/quickbooks-courses",
-    "https://quickbookstraining.com/plans-and-pricing",
-    "https://quickbookstraining.com/learn-quickbooks",
-    "https://quickbookstraining.com/live-quickbooks-help",
-    "https://quickbookstraining.com/quickbooks-classes",
-    "https://quickbookstraining.com/about-us",
-    "https://quickbookstraining.com/contact-us",
-    "https://quickbookstraining.com/quickbooks-certification",
-    "https://quickbookstraining.com/quickbooks-online-certification",
-    "https://quickbookstraining.com/quickbooks-desktop-certification",
-    "https://quickbookstraining.com/quickbooks-bookkeeping-certification",
-    "https://quickbookstraining.com/quickbooks-certification-online",
-    "https://quickbookstraining.com/quickbooks-certification-exam",
-    "https://quickbookstraining.com/terms-and-conditions",
-    "https://quickbookstraining.com/privacy-policy"
-]
+def check_disk_space():
+    total, used, free = shutil.disk_usage("/")
+    free_gb = free // (2**30)
+    logging.info(f"💾 Disk space free: {free_gb} GB")
+    if free_gb < 2:
+        raise OSError("Not enough disk space (less than 2 GB free).")
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/114.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml",
-    "Accept-Language": "en-US,en;q=0.9",
-}
+def check_network_connectivity(host="8.8.8.8", port=53, timeout=3):
+    try:
+        socket.setdefaulttimeout(timeout)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
+        logging.info("🌐 Network connectivity: OK")
+    except Exception:
+        raise ConnectionError("Unable to reach the internet (8.8.8.8)")
+
+def check_env_vars(required_vars):
+    missing = [var for var in required_vars if os.getenv(var) is None]
+    if missing:
+        raise EnvironmentError(f"Missing required environment variables: {', '.join(missing)}")
+    logging.info("🔐 Environment variables check: OK")
 
 def run_tech_check():
-    print("🛠️ DOOMBOT TECH CHECK RESULTS\n==============================")
-    with httpx.Client(http2=True, headers=HEADERS, timeout=10, follow_redirects=True) as client:
-        for url in PAGES:
-            try:
-                start = time.time()
-                res = client.get(url)
-                duration = round(time.time() - start, 2)
+    logging.info("🚦 Starting tech_check_v2 diagnostic...")
 
-                if res.status_code == 200:
-                    print(f"✅ {url} → {res.status_code} OK (final: {res.url}) in {duration}s")
-                else:
-                    print(f"⚠️ {url} → {res.status_code} (final: {res.url}) in {duration}s")
-            except httpx.RequestError as e:
-                print(f"❌ {url} could not be reached: {e}")
+    # Step 1: Python version
+    check_python_version()
 
-if __name__ == "__main__":
-    run_tech_check()
+    # Step 2: Disk space
+    check_disk_space()
+
+    # Step 3: Network access
+    check_network_connectivity()
+
+    # Step 4: Environment variables (customize this list for your project)
+    required_envs = [
+        "GOOGLE_API_KEY",   # example only — update based on your .env file
+        "WOOCOMMERCE_KEY",
+        "WOOCOMMERCE_SECRET"
+    ]
+    check_env_vars(required_envs)
+
+    logging.info("✅ All tech checks passed successfully.")
+
