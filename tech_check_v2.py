@@ -1,108 +1,107 @@
 # tech_check_v2.py
-import os, socket, shutil, platform, logging, subprocess, sys, textwrap
+
+import os
+import socket
+import shutil
+import platform
+import logging
 import requests
 from bs4 import BeautifulSoup
+import language_tool_python
 
-# ---------- Tech checks ----------
+# ---------- System Tech Checks ----------
+
 def check_python_version():
-    ver = platform.python_version()
-    logging.info(f"🐍 Python {ver}")
-    if tuple(map(int, ver.split("."))) < (3, 8):
-        raise EnvironmentError("Python 3.8+ required")
+    version = platform.python_version()
+    logging.info(f"🐍 Python version: {version}")
+    if tuple(map(int, version.split("."))) < (3, 8):
+        raise EnvironmentError("Python 3.8+ is required.")
 
-def check_disk():
-    free_gb = shutil.disk_usage("/").free // 2**30
-    logging.info(f"💾 Free disk: {free_gb} GB")
+def check_disk_space():
+    total, used, free = shutil.disk_usage("/")
+    free_gb = free // (2**30)
+    logging.info(f"💾 Disk space free: {free_gb} GB")
     if free_gb < 2:
-        raise OSError("Less than 2 GB free")
+        raise OSError("Not enough disk space (less than 2 GB free).")
 
-def check_network(host="8.8.8.8", port=53):
+def check_network_connectivity(host="8.8.8.8", port=53, timeout=3):
     try:
-        socket.create_connection((host, port), timeout=3)
-        logging.info("🌐 Network OK")
+        socket.setdefaulttimeout(timeout)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
+        logging.info("🌐 Network connectivity: OK")
     except Exception:
-        raise ConnectionError("No outbound network")
+        raise ConnectionError("Unable to reach the internet (8.8.8.8)")
 
-def check_env(required):
-    missing = [v for v in required if os.getenv(v) is None]
+def check_env_vars(required_vars):
+    missing = [var for var in required_vars if os.getenv(var) is None]
     if missing:
-        raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
-    logging.info("🔐 Env vars present")
+        raise EnvironmentError(f"Missing required environment variables: {', '.join(missing)}")
+    logging.info("🔐 Environment variables: OK")
 
-# ---------- Lightweight grammar check ----------
-def ensure_language_tool():
-    """
-    language_tool_python pulls a 200 MB JAR the first time.
-    We import lazily so other parts can still run if it fails.
-    """
-    try:
-        import language_tool_python  # noqa: F401
-    except ImportError:
-        logging.info("📦 Installing language-tool-python on the fly…")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "language_tool_python"])
-        import language_tool_python  # type: ignore
+# ---------- Website Grammar/Spelling Review ----------
 
-def grammar_issues(text, limit=10):
-    ensure_language_tool()
-    import language_tool_python  # type: ignore
-    tool = language_tool_python.LanguageTool("en-US")
-    matches = tool.check(text)
-    issues = []
-    for m in matches[:limit]:
-        context = m.context.strip()
-        sug = ", ".join(m.replacements[:3]) or "—"
-        issues.append(f"• {m.ruleId}: “{context}” → {sug}")
-    return issues
+def crawl_pages_and_check_grammar(urls):
+    tool = language_tool_python.LanguageTool('en-US')
+    results = []
 
-# ---------- Website scanner ----------
-def fetch_text(url):
-    try:
-        html = requests.get(url, timeout=15).text
-    except Exception as e:
-        return "", f"⚠️ {url} — fetch error: {e}"
-    soup = BeautifulSoup(html, "html.parser")
-    for tag in soup(["script", "style", "nav", "footer"]):
-        tag.decompose()
-    return soup.get_text(separator=" ", strip=True)[:20000], ""
-
-def run_site_report(urls):
-    logging.info("📝 Starting website grammar scan…")
-    report_lines = []
     for url in urls:
-        txt, err = fetch_text(url)
-        if err:
-            report_lines.append(err)
-            continue
-        issues = grammar_issues(txt)
-        if issues:
-            report_lines.append(f"\n🔎 Issues on {url}:")
-            report_lines.extend(issues)
-        else:
-            report_lines.append(f"✅ {url} — no issues found")
-    log_block = "\n".join(report_lines) or "✅ No issues on any page"
-    logging.info("\n" + textwrap.dedent(f"""
-        ===============================
-        📝 WEBSITE GRAMMAR REPORT
-        ===============================
-        {log_block}
-        ===============================
-    """).strip())
+        try:
+            logging.info(f"🌐 Checking: {url}")
+            response = requests.get(url, timeout=10)
+            soup = BeautifulSoup(response.text, "html.parser")
+            text = soup.get_text()
+            matches = tool.check(text)
 
-# ---------- Master runner ----------
+            if matches:
+                results.append(f"\n🔎 Issues found on {url}:")
+                for match in matches[:10]:  # Limit to first 10 issues per page
+                    context = match.context.replace("\n", " ").strip()
+                    suggestion = ", ".join(match.replacements[:3]) or "—"
+                    results.append(f"• {match.ruleId}: “{context}” → {suggestion}")
+            else:
+                results.append(f"\n✅ No issues found on {url}")
+
+        except Exception as e:
+            results.append(f"\n⚠️ Error checking {url}: {e}")
+
+    return results
+
+# ---------- Master Runner ----------
+
 def run_tech_check():
-    logging.info("🚦 tech_check_v2 starting…")
-    # System checks
-    check_python_version()
-    check_disk()
-    check_network()
-    check_env(["GOOGLE_API_KEY", "WOOCOMMERCE_KEY", "WOOCOMMERCE_SECRET"])
-    logging.info("✅ System tech checks passed")
+    logging.info("🚦 Starting tech_check_v2 diagnostic...")
 
-    # Website report
-    urls = [
+    # 1. System checks
+    check_python_version()
+    check_disk_space()
+    check_network_connectivity()
+    check_env_vars([])  # You can add env var names here if needed
+
+    logging.info("✅ System checks passed.\n")
+
+    # 2. Website grammar/spelling checks
+    urls_to_check = [
         "https://quickbookstraining.com",
         "https://quickbookstraining.com/classes",
         "https://quickbookstraining.com/contact",
+        "https://quickbookstraining.com/about",
+        "https://quickbookstraining.com/instructors",
+        "https://quickbookstraining.com/faqs",
+        "https://quickbookstraining.com/privacy-policy",
+        "https://quickbookstraining.com/terms-of-service",
+        "https://quickbookstraining.com/free-resources",
+        "https://quickbookstraining.com/quickbooks-certification-training"
     ]
-    run_site_report(urls)
+
+    logging.info("📝 Starting full website grammar review...")
+    report = crawl_pages_and_check_grammar(urls_to_check)
+
+    logging.info("\n" + "=" * 40)
+    logging.info("📝 WEBSITE GRAMMAR REPORT")
+    logging.info("=" * 40)
+    for line in report:
+        logging.info(line)
+    logging.info("=" * 40 + "\n")
+
+
 
