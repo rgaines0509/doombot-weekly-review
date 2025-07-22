@@ -1,91 +1,78 @@
-# 📘 Doombot Grammar & Tech Check Script (calls doombot_techcheck_v2.py)
+# 📘 Doombot Grammar & Tech Check Script (with httpx, no Slack posting)
+
 import os
 import subprocess
 import httpx
 from bs4 import BeautifulSoup
 from language_tool_python import LanguageTool
 
-SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")  # unused in test mode
-
-def run_tech_check():
-    print("⚙️ Launching tech_check.py live...")
-    try:
-        # Force re-import the script freshly
-        subprocess.run(["python3", "-u", "tech_check.py"], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error running tech_check.py: {e}")
-
-
 URLS = [
     "https://quickbookstraining.com/",
     "https://quickbookstraining.com/quickbooks-courses",
-    "https://quickbookstraining.com/plans-and-pricing",
-    "https://quickbookstraining.com/learn-quickbooks",
-    "https://quickbookstraining.com/live-quickbooks-help",
-    "https://quickbookstraining.com/quickbooks-classes",
-    "https://quickbookstraining.com/about-us",
-    "https://quickbookstraining.com/contact-us",
-    "https://quickbookstraining.com/quickbooks-certification",
-    "https://quickbookstraining.com/quickbooks-online-certification",
-    "https://quickbookstraining.com/quickbooks-desktop-certification",
-    "https://quickbookstraining.com/quickbooks-bookkeeping-certification",
-    "https://quickbookstraining.com/quickbooks-certification-online",
-    "https://quickbookstraining.com/quickbooks-certification-exam",
-    "https://quickbookstraining.com/terms-and-conditions",
-    "https://quickbookstraining.com/privacy-policy"
+    "https://quickbookstraining.com/plans-and-pricing"
 ]
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/114.0.0.0 Safari/537.36"
-    )
-}
+def fetch_page_text(url):
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/114.0.0.0 Safari/537.36"
+        )
+    }
 
-
-def fetch_page_text(url: str) -> str:
-    """Fetch visible text from a page with httpx."""
     try:
-        with httpx.Client(http2=True, headers=HEADERS, timeout=15, follow_redirects=True) as client:
-            r = client.get(url)
-            print(f"[DEBUG] {url} → {r.status_code} final={r.url}")
-            r.raise_for_status()
-            return BeautifulSoup(r.text, "lxml").get_text(" ", strip=True)
-    except Exception as e:
-        return f"[Fetch error: {e}]"
+        with httpx.Client(http2=True, headers=headers, timeout=10, follow_redirects=True) as client:
+            res = client.get(url)
+            print(f"[DEBUG] {url} - Status: {res.status_code} - Final URL: {res.url}")
+            res.raise_for_status()
+            soup = BeautifulSoup(res.text, "lxml")
+            return soup.get_text(separator=" ", strip=True)
 
+    except httpx.RequestError as e:
+        print(f"[ERROR] Request failed for {url}: {e}")
+        return f"[Error fetching page: {e}]"
 
-def run_grammar_checks() -> str:
-    tool = LanguageTool("en-US")
-    parts = ["🧠 *Doombot Grammar Report*"]
-    for u in URLS:
-        txt = fetch_page_text(u)
-        matches = tool.check(txt)
-        parts.append(f"\n🔗 {u}")
+    except httpx.HTTPStatusError as e:
+        print(f"[ERROR] HTTP error for {url}: {e.response.status_code}")
+        return f"[HTTP error fetching page: {e.response.status_code}]"
+
+def run_grammar_checks():
+    tool = LanguageTool('en-US')
+    output = ["🧠 *Doombot Grammar Report*"]
+
+    for url in URLS:
+        content = fetch_page_text(url)
+        matches = tool.check(content)
+        output.append(f"\n🔗 {url}")
         if not matches:
-            parts.append("✅ No grammar issues found.")
+            output.append("✅ No grammar issues found.")
             continue
-        for m in matches[:5]:
-            err = txt[m.offset:m.offset + m.errorLength]
-            sug = m.replacements[0] if m.replacements else "(no suggestion)"
-            parts.append(f"❌ {m.ruleIssueType.capitalize()}: “{err}” → “{sug}”")
-    return "\n".join(parts)
+        for match in matches[:5]:
+            error_text = content[match.offset:match.offset + match.errorLength]
+            suggestion = match.replacements[0] if match.replacements else "(no suggestion)"
+            context = content[max(0, match.offset - 40):match.offset + match.errorLength + 40]
+            context = context.replace("\n", " ").replace(error_text, f"*{error_text}*")
+            output.append(f"❌ {match.ruleIssueType.capitalize()}: “{error_text}” ➝ “{suggestion}”\n💬 Context: …{context}…")
+    return "\n".join(output)
 
-
-def run_tech_check() -> str:
-    print("🧪 Running doombot_techcheck_v2.py …")
- print("🚨 RUNNING MANUAL TECH CHECK")
-from tech_check import run_tech_check
-print(run_tech_check())
-
-    return result.stdout or result.stderr
-
+def run_tech_check():
+    try:
+        # 👇 Make sure you're referencing the new script!
+        result = subprocess.run(["python", "tech_check_v2.py"], capture_output=True, text=True, check=True)
+        return f"\n🛠️ *Doombot Tech Check Output:*\n{result.stdout}"
+    except subprocess.CalledProcessError as e:
+        return f"\n⚠️ Tech Check Failed:\n{e.output or e.stderr}"
 
 if __name__ == "__main__":
-    full_report = run_grammar_checks() + "\n\n" + run_tech_check()
-    print(full_report)
-    print("🚫 Slack disabled for test run.")
+    grammar_report = run_grammar_checks()
+    tech_report = run_tech_check()
+    full_report = f"{grammar_report}\n\n{tech_report}"
+
+    print(full_report)  # Only prints to GitHub Actions log
+
+    print("\n🚫 Slack post disabled for test run.")
+
 
 
 
