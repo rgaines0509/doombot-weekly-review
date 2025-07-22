@@ -1,17 +1,28 @@
-# 📘 Doombot Grammar & Tech Check Script (with httpx, safe test version)
-import os
+# 📘 Doombot Grammar + Tech Check (Final, all URLs, Slack disabled)
+
 import subprocess
 import httpx
 from bs4 import BeautifulSoup
 from language_tool_python import LanguageTool
 
-# Slack webhook is loaded but unused for this version
-SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
-
+# ── 1.  Full list of pages to scan ──────────────────────────────────────────
 URLS = [
     "https://quickbookstraining.com/",
     "https://quickbookstraining.com/quickbooks-courses",
-    "https://quickbookstraining.com/plans-and-pricing"
+    "https://quickbookstraining.com/plans-and-pricing",
+    "https://quickbookstraining.com/learn-quickbooks",
+    "https://quickbookstraining.com/live-quickbooks-help",
+    "https://quickbookstraining.com/quickbooks-classes",
+    "https://quickbookstraining.com/about-us",
+    "https://quickbookstraining.com/contact-us",
+    "https://quickbookstraining.com/quickbooks-certification",
+    "https://quickbookstraining.com/quickbooks-online-certification",
+    "https://quickbookstraining.com/quickbooks-desktop-certification",
+    "https://quickbookstraining.com/quickbooks-bookkeeping-certification",
+    "https://quickbookstraining.com/quickbooks-certification-online",
+    "https://quickbookstraining.com/quickbooks-certification-exam",
+    "https://quickbookstraining.com/terms-and-conditions",
+    "https://quickbookstraining.com/privacy-policy",
 ]
 
 HEADERS = {
@@ -22,54 +33,61 @@ HEADERS = {
     )
 }
 
-def fetch_page_text(url):
+# ── 2.  Helpers ─────────────────────────────────────────────────────────────
+def fetch_page_text(url: str) -> str:
+    """Return visible text from URL or an error string."""
     try:
-        with httpx.Client(http2=True, headers=HEADERS, timeout=10, follow_redirects=True) as client:
-            res = client.get(url)
-            print(f"[DEBUG] {url} - Status: {res.status_code} - Final URL: {res.url}")
-            res.raise_for_status()
-            soup = BeautifulSoup(res.text, "lxml")
+        with httpx.Client(http2=True, headers=HEADERS, timeout=10, follow_redirects=True) as c:
+            r = c.get(url)
+            print(f"[DEBUG] {url} → {r.status_code} (final {r.url})")
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "lxml")
             return soup.get_text(separator=" ", strip=True)
-    except httpx.RequestError as e:
-        print(f"[ERROR] Request failed for {url}: {e}")
+    except Exception as e:
         return f"[Error fetching page: {e}]"
-    except httpx.HTTPStatusError as e:
-        print(f"[ERROR] HTTP error for {url}: {e.response.status_code}")
-        return f"[HTTP error fetching page: {e.response.status_code}]"
 
-def run_grammar_checks():
-    tool = LanguageTool('en-US')
-    output = ["🧠 *Doombot Grammar Report*"]
+def run_grammar_checks() -> str:
+    tool = LanguageTool("en-US")
+    report = ["🧠 *Doombot Grammar Report*"]
 
     for url in URLS:
-        content = fetch_page_text(url)
-        matches = tool.check(content)
-        output.append(f"\n🔗 {url}")
+        text = fetch_page_text(url)
+        matches = tool.check(text)
+        report.append(f"\n🔗 {url}")
         if not matches:
-            output.append("✅ No grammar issues found.")
+            report.append("✅ No grammar issues found.")
             continue
-        for match in matches[:5]:
-            error_text = content[match.offset:match.offset + match.errorLength]
-            suggestion = match.replacements[0] if match.replacements else "(no suggestion)"
-            context = content[max(0, match.offset - 40):match.offset + match.errorLength + 40]
-            context = context.replace("\n", " ").replace(error_text, f"*{error_text}*")
-            output.append(f"❌ {match.ruleIssueType.capitalize()}: “{error_text}” ➝ “{suggestion}”\n💬 Context: …{context}…")
-    return "\n".join(output)
+        for m in matches[:5]:  # limit per page
+            snippet = text[m.offset : m.offset + m.errorLength]
+            suggestion = m.replacements[0] if m.replacements else "(no suggestion)"
+            context = text[max(0, m.offset - 40) : m.offset + m.errorLength + 40].replace(
+                snippet, f"*{snippet}*"
+            )
+            report.append(
+                f"❌ {m.ruleIssueType.capitalize()}: “{snippet}” ➝ “{suggestion}”\n"
+                f"💬 Context: …{context}…"
+            )
+    return "\n".join(report)
 
-def run_tech_check():
+def run_tech_check() -> str:
+    """Call the NEW tech-check script."""
     try:
-        result = subprocess.run(["python", "tech_check_v2.py"], capture_output=True, text=True, check=True)
-        return f"\n🛠️ *Doombot Tech Check Output:*\n{result.stdout}"
+        res = subprocess.run(
+            ["python", "tech_check_v2.py"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return f"\n🛠️ *Doombot Tech Check Output*:\n{res.stdout}"
     except subprocess.CalledProcessError as e:
-        return f"\n⚠️ Tech Check Failed:\n{e.output or e.stderr}"
+        return f"\n⚠️ Tech check failed:\n{e.stdout or e.stderr}"
 
+# ── 3.  Entry point ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    grammar_report = run_grammar_checks()
-    tech_report = run_tech_check()
-    full_report = f"{grammar_report}\n\n{tech_report}"
+    full_report = f"{run_grammar_checks()}\n\n{run_tech_check()}"
+    print(full_report)                    # shows in GitHub-Actions logs
+    print("\n🚫 Slack posting is OFF for this test run.")
 
-    print(full_report)  # Logs to GitHub Actions output
-    print("\n🚫 Slack post disabled for test run.")
 
 
 
