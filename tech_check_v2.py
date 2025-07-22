@@ -47,11 +47,12 @@ def run_tech_check():
 
     # Step 4: Environment variables (customize this list for your project)
     required_envs = [
-        "GOOGLE_API_KEY",   # example only — update based on your .env file
+        "GOOGLE_API_KEY",   # example
         "WOOCOMMERCE_KEY",
         "WOOCOMMERCE_SECRET"
     ]
     check_env_vars(required_envs)
 
     logging.info("✅ All tech checks passed successfully.")
+
 
