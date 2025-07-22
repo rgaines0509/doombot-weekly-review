@@ -25,10 +25,10 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Run Grammar & Tech Checks
-        run: |
-          python main.py
-          python tech_check.py
+- name: Run Grammar & Tech Checks
+  run: |
+    python main.py         # ✅ main.py now internally calls tech_check_v2.py
+
 
 
 
