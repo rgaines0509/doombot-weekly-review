@@ -11,13 +11,11 @@ jobs:
     - name: 📥 Checkout repository
       uses: actions/checkout@v3
 
-    - name: 🧹 Hard reset Python files
+    - name: 💣 Full cache purge
       run: |
-        echo "🔥 Deleting tech_check.py and any cache"
-        rm -f tech_check.py
-        rm -rf __pycache__/
-        find . -name "*.pyc" -delete
-        echo "✅ Done."
+        echo "🔨 Nuking all .pyc and __pycache__ leftovers"
+        find . -name "*.pyc" -exec rm -f {} \;
+        find . -type d -name "__pycache__" -exec rm -rf {} +
 
     - name: 🐍 Set up Python
       uses: actions/setup-python@v4
