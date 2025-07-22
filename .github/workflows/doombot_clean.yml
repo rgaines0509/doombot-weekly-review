@@ -8,28 +8,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
+    - name: 📥 Checkout repository
       uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-
-    - name: Install dependencies
+    - name: 🧾 List all Python files before cleanup
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        echo "📂 Scanning for .py files in the repo..."
+        find . -name "*.py"
+        echo "🔍 If you see tech_check.py here — it still lives."
 
-    - name: 💣 Purge old tech_check.py + cache
+    - name: 💣 Purge old tech_check.py + bytecode
       run: |
-        echo "🔥 Removing tech_check.py and cache..."
+        echo "🔥 Removing tech_check.py and Python caches..."
         rm -f tech_check.py
         rm -rf __pycache__/
         find . -name "*.pyc" -delete
         echo "✅ Cleanup complete"
 
-    - name: Run main.py
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: 🚀 Run Doombot main script
       run: python main.py
+
 
 
