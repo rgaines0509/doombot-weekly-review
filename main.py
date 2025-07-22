@@ -7,6 +7,15 @@ from language_tool_python import LanguageTool
 
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")  # unused in test mode
 
+def run_tech_check():
+    print("⚙️ Launching tech_check.py live...")
+    try:
+        # Force re-import the script freshly
+        subprocess.run(["python3", "-u", "tech_check.py"], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Error running tech_check.py: {e}")
+
+
 URLS = [
     "https://quickbookstraining.com/",
     "https://quickbookstraining.com/quickbooks-courses",
