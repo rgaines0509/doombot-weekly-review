@@ -2,10 +2,10 @@ import aiohttp
 from bs4 import BeautifulSoup
 import asyncio
 from playwright.async_api import async_playwright
+import language_tool_python
 
-# No grammar analysis for now; built-in placeholder if needed
-def dummy_grammar_check(text):
-    return []
+# Initialize grammar checker
+tool = language_tool_python.LanguageTool('en-US')
 
 async def fetch_html(session, url):
     try:
@@ -80,8 +80,9 @@ async def analyze_page(session, playwright, url):
     # Check dropdowns
     dropdown_results = await check_dropdowns(playwright, url)
 
-    # Check grammar (dummy for now)
-    grammar_errors = dummy_grammar_check(text)
+    # Check grammar
+    matches = tool.check(text)
+    grammar_errors = [f"{match.context} -> {match.message}" for match in matches]
 
     # Start building formatted report string
     report = [f"## 🔗 {url}"]
@@ -114,6 +115,7 @@ async def run_check(urls):
         async with async_playwright() as playwright:
             tasks = [analyze_page(session, playwright, url) for url in urls]
             return await asyncio.gather(*tasks)
+
 
 
 
