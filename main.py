@@ -1,14 +1,11 @@
-import os
-import json
 import asyncio
-import logging
+import os
+from datetime import datetime
 from doomsite_check import run_check
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from datetime import datetime
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import requests
+import json
 
 URLS_TO_CHECK = [
     "https://quickbookstraining.com/",
@@ -29,60 +26,90 @@ URLS_TO_CHECK = [
     "https://quickbookstraining.com/learn-quickbooks"
 ]
 
-GOOGLE_DOC_TITLE = "Doombot Weekly Website Review"
+DOC_TITLE = "Doombot Weekly Website Review"
+SCOPES = ['https://www.googleapis.com/auth/documents']
+GOOGLE_DOC_MIME = 'application/vnd.google-apps.document'
 
-def authenticate_docs_api():
-    key_path = "service_account_key.json"
-    credentials = service_account.Credentials.from_service_account_file(
-        key_path, scopes=["https://www.googleapis.com/auth/documents"]
+
+def get_service_account_credentials():
+    service_account_info = os.environ['GOOGLE_SERVICE_ACCOUNT_KEY']
+    service_account_json = json.loads(service_account_info)
+    return service_account.Credentials.from_service_account_info(
+        service_account_json,
+        scopes=SCOPES
     )
-    return build('docs', 'v1', credentials=credentials)
 
-def get_or_create_doc(service, title):
-    docs = service.documents()
-    # Try to find the document by title (optional, could be cached)
-    body = {"title": title}
-    doc = docs.create(body=body).execute()
-    return doc['documentId']
 
-def write_to_google_doc(service, doc_id, content_lines):
-    requests = []
-    # Clear existing content first
-    requests.append({"deleteContentRange": {"range": {"startIndex": 1, "endIndex": 1_000_000}}})
+def find_or_create_doc(service, title):
+    drive_service = build('drive', 'v3', credentials=service._credentials)
+    results = drive_service.files().list(
+        q=f"name='{title}' and mimeType='{GOOGLE_DOC_MIME}' and trashed = false",
+        spaces='drive',
+        fields="files(id, name)"
+    ).execute()
+    items = results.get('files', [])
 
-    # Add the new content
-    for line in content_lines:
-        requests.append({
-            "insertText": {
-                "location": {"index": 1},
-                "text": line + "\n"
+    if items:
+        print(f"📄 Found existing doc: {items[0]['name']} (ID: {items[0]['id']})")
+        return items[0]['id']
+    else:
+        body = {'title': title}
+        doc = service.documents().create(body=body).execute()
+        print(f"🆕 Created new doc: {doc.get('title')} (ID: {doc.get('documentId')})")
+        return doc.get('documentId')
+
+
+def write_report_to_google_doc(report, document_id, service):
+    body = {
+        'requests': [{
+            'insertText': {
+                'location': {'index': 1},
+                'text': report
             }
-        })
+        }]
+    }
+    service.documents().batchUpdate(documentId=document_id, body=body).execute()
 
-    service.documents().batchUpdate(documentId=doc_id, body={"requests": requests}).execute()
+
+def send_report_to_slack(doc_id):
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    doc_link = f"https://docs.google.com/document/d/{doc_id}/edit"
+    slack_message = {
+        "text": f"📝 Doombot Weekly Website Review is complete!\n{doc_link}"
+    }
+    response = requests.post(webhook_url, json=slack_message)
+    if response.status_code != 200:
+        print("Slack webhook failed:", response.text)
+    else:
+        print("📤 Sent report to Slack!")
+
 
 async def main():
-    logger.info("🚀 Doombot Report Starting...")
+    print("🚀 Doombot Report Starting...")
     results = await run_check(URLS_TO_CHECK)
 
-    # Format the report
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    report_lines = [f"# Doombot Weekly Website Review", f"Generated: {now}", ""]
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    full_report = f"Doombot Weekly Report - {timestamp}\n\n"
     for result in results:
-        report_lines.append(f"## {result['url']}")
-        report_lines.extend(result['report'])
-        report_lines.append("")
+        full_report += result + "\n\n"
 
-    # Save to Google Docs
-    logger.info("📄 Authenticating and writing report to Google Docs...")
-    service = authenticate_docs_api()
-    doc_id = get_or_create_doc(service, GOOGLE_DOC_TITLE)
-    write_to_google_doc(service, doc_id, report_lines)
+    print("📝 Connecting to Google Docs API...")
+    creds = get_service_account_credentials()
+    docs_service = build('docs', 'v1', credentials=creds)
+    doc_id = find_or_create_doc(docs_service, DOC_TITLE)
 
-    logger.info("✅ Google Doc updated successfully.")
+    print("📊 Writing report to Google Doc...")
+    write_report_to_google_doc(full_report, doc_id, docs_service)
+
+    print("📣 Notifying Slack...")
+    send_report_to_slack(doc_id)
+
+    print("✅ Doombot report complete.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
