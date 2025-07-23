@@ -6,6 +6,9 @@ import language_tool_python
 
 tool = language_tool_python.LanguageTool('en-US')
 
+MAX_TEXT_LENGTH = 20000  # cap to ~20K characters
+GRAMMAR_TIMEOUT_SEC = 20  # limit grammar check time
+
 async def check_page(page, url):
     print(f"\n🧪 Checking: {url}")
     await page.goto(url, wait_until="networkidle")
@@ -37,35 +40,22 @@ async def check_page(page, url):
     html = await page.content()
     soup = BeautifulSoup(html, "lxml")
     visible_text = ' '.join([el.get_text(strip=True) for el in soup.find_all(['p', 'li', 'span', 'div', 'h1', 'h2', 'h3'])])
-    
-    matches = tool.check(visible_text)
+    visible_text = visible_text.strip()
+
     grammar_errors = []
+    if visible_text and len(visible_text) < MAX_TEXT_LENGTH:
+        try:
+            print(f"🔍 Running grammar check for: {url}")
+            matches = await asyncio.wait_for(
+                asyncio.to_thread(tool.check, visible_text),
+                timeout=GRAMMAR_TIMEOUT_SEC
+            )
+            for match in matches:
+                context = match.context[:75].strip().replace('\n', ' ')
+                grammar_errors.append(f"✏️ Issue: {match.message}\n   ➤ Suggestion: {match.replacements}\n   🔍 Location: {context}")
+        except asyncio.TimeoutError:
+            grammar_errors.append("⚠️ Grammar check timed out on this page.")
+        except Exception as e:
+            grammar_errors.append(f"⚠️ Grammar check failed: {str(e)}")
+    elif not visible
 
-    for match in matches:
-        context = match.context[:75].strip().replace('\n', ' ')
-        grammar_errors.append(f"✏️ Issue: {match.message}\n   ➤ Suggestion: {match.replacements}\n   🔍 Location: {context}")
-
-    return {
-        "url": url,
-        "broken_links": broken_links,
-        "dropdowns": dropdown_results,
-        "grammar_errors": grammar_errors
-    }
-
-async def run_check(urls):
-    report = []
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-
-        for url in urls:
-            try:
-                result = await check_page(page, url)
-                report.append(result)
-            except Exception as e:
-                report.append({"url": url, "error": str(e)})
-
-        await browser.close()
-
-    return report
