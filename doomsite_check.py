@@ -1,10 +1,9 @@
 import asyncio
 import re
 from playwright.async_api import async_playwright
-from bs4 import BeautifulSoup
 import aiohttp
 
-URLS_TO_CHECK = [
+APPROVED_URLS = [
     "https://quickbookstraining.com/",
     "https://quickbookstraining.com/live-quickbooks-help",
     "https://quickbookstraining.com/quickbooks-courses",
@@ -19,85 +18,91 @@ URLS_TO_CHECK = [
     "https://quickbookstraining.com/quickbooks-certification-online",
     "https://quickbookstraining.com/quickbooks-certification-exam",
     "https://quickbookstraining.com/terms-and-conditions",
-    "https://quickbookstraining.com/privacy-policy"
+    "https://quickbookstraining.com/privacy-policy",
 ]
 
-LANGUAGETOOL_ENDPOINT = "https://api.languagetool.org/v2/check"
+MAX_TEXT_FOR_GRAMMAR = 5000
 
-async def check_grammar(text, session):
-    if not text or len(text.strip()) < 10:
-        return ["⚠️ No readable text to analyze."]
-    try:
-        payload = {
-            "text": text[:5000],  # Cap for API safety
-            "language": "en-US"
-        }
-        async with session.post(LANGUAGETOOL_ENDPOINT, data=payload) as resp:
-            if resp.status != 200:
-                return [f"❌ LanguageTool API error: {resp.status}"]
-            data = await resp.json()
-            return [
-                f"{match['rule']['issueType'].upper()}: {match['message']} (Context: '{match['context']['text']}')"
-                for match in data.get("matches", [])
-            ]
-    except Exception as e:
-        return [f"❌ Grammar check failed: {str(e)}"]
+async def check_dropdowns(page):
+    dropdowns = await page.query_selector_all("details, summary, .dropdown, .accordion, .faq-toggle, [aria-expanded]")
+    results = []
 
-async def analyze_page(url, session, playwright):
-    result = {"url": url, "broken_links": [], "dropdowns": [], "grammar_errors": []}
+    for idx, dropdown in enumerate(dropdowns):
+        try:
+            await dropdown.click()
+            await page.wait_for_timeout(500)
+            visible = await dropdown.is_visible()
+            results.append("Pass" if visible else "Fail")
+        except:
+            results.append("Fail")
 
-    try:
-        browser = await playwright.chromium.launch()
-        page = await browser.new_page()
-        response = await page.goto(url)
+    return results
 
-        if not response or not response.ok:
-            result["error"] = f"Page load failed (status: {response.status if response else 'N/A'})"
-            await browser.close()
-            return result
-
-        # Extract page content
-        content = await page.content()
-        soup = BeautifulSoup(content, "html.parser")
-
-        # Check dropdowns
-        dropdowns = soup.find_all("details")
-        for d in dropdowns:
-            try:
-                handle = await page.query_selector("details")
-                if handle:
-                    visible = await handle.is_visible()
-                    result["dropdowns"].append("Pass" if visible else "Fail")
-            except:
-                result["dropdowns"].append("Fail")
-
-        # Check all links
-        links = [a.get("href") for a in soup.find_all("a", href=True) if a.get("href").startswith("http")]
+async def check_links(page):
+    links = await page.query_selector_all("a[href]")
+    broken_links = []
+    async with aiohttp.ClientSession() as session:
         for link in links:
+            href = await link.get_attribute("href")
+            if not href or not href.startswith("http"):
+                continue
             try:
-                async with session.get(link, timeout=10) as resp:
-                    if resp.status >= 400:
-                        result["broken_links"].append((link, resp.status))
-            except:
-                result["broken_links"].append((link, "Request failed"))
+                async with session.get(href, timeout=10) as response:
+                    if response.status >= 400:
+                        broken_links.append((href, response.status))
+            except Exception as e:
+                broken_links.append((href, "timeout or error"))
 
-        # Grammar/spelling check
-        page_text = soup.get_text(separator=' ', strip=True)
-        result["grammar_errors"] = await check_grammar(page_text, session)
+    return broken_links
 
-        await browser.close()
+async def check_grammar(text):
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(
+                "https://api.languagetool.org/v2/check",
+                data={
+                    "text": text[:MAX_TEXT_FOR_GRAMMAR],
+                    "language": "en-US"
+                },
+                timeout=15
+            ) as resp:
+                data = await resp.json()
+                return [
+                    f"{match['message']} (at position {match['offset']} in: '{match['context']['text']}')"
+                    for match in data.get("matches", [])
+                ]
+        except Exception as e:
+            return [f"Grammar check failed: {str(e)}"]
+
+async def analyze_page(playwright, url):
+    browser = await playwright.chromium.launch(headless=True)
+    context = await browser.new_context()
+    page = await context.new_page()
+    result = {"url": url}
+
+    try:
+        await page.goto(url, timeout=30000)
+        await page.wait_for_load_state("load")
+
+        result["dropdowns"] = await check_dropdowns(page)
+        result["broken_links"] = await check_links(page)
+        content = await page.content()
+        text = re.sub('<[^<]+?>', '', content)
+        result["grammar_errors"] = await check_grammar(text)
 
     except Exception as e:
         result["error"] = str(e)
 
+    await browser.close()
     return result
 
 async def run_check(urls):
-    async with async_playwright() as playwright:
-        async with aiohttp.ClientSession() as session:
-            tasks = [analyze_page(url, session, playwright) for url in urls]
-            results = await asyncio.gather(*tasks)
-    return results
+    async with async_playwright() as p:
+        tasks = [analyze_page(p, url) for url in urls]
+        return await asyncio.gather(*tasks)
+
+# Expose this for main.py
+__all__ = ["run_check"]
 
 
 
