@@ -60,6 +60,13 @@ def find_or_create_doc(service, title):
 
 
 def write_report_to_google_doc(report, document_id, service):
+    # Clear old content first
+    service.documents().batchUpdate(
+        documentId=document_id,
+        body={'requests': [{'deleteContentRange': {'range': {'startIndex': 1}}}]}
+    ).execute()
+
+    # Insert new content
     body = {
         'requests': [{
             'insertText': {
@@ -75,7 +82,7 @@ def send_report_to_slack(doc_id):
     webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
     doc_link = f"https://docs.google.com/document/d/{doc_id}/edit"
     slack_message = {
-        "text": f"📝 Doombot Weekly Website Review is complete!\n{doc_link}"
+        "text": f"📝 *Doombot Weekly Website Review is complete!*\n{doc_link}"
     }
     response = requests.post(webhook_url, json=slack_message)
     if response.status_code != 200:
@@ -85,7 +92,30 @@ def send_report_to_slack(doc_id):
 
 
 async def main():
-    print("🚀 Doomb
+    print("🚀 Doombot Weekly Website Review starting...")
+    results = await run_check(URLS_TO_CHECK)
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    full_report = f"**Doombot Weekly Report**\n*Generated: {timestamp}*\n\n"
+    full_report += "\n---\n".join(results)
+
+    print("🔐 Authenticating with Google Docs...")
+    creds = get_service_account_credentials()
+    docs_service = build('docs', 'v1', credentials=creds)
+    doc_id = find_or_create_doc(docs_service, DOC_TITLE)
+
+    print("📝 Writing to Google Doc...")
+    write_report_to_google_doc(full_report, doc_id, docs_service)
+
+    print("📣 Sending to Slack...")
+    send_report_to_slack(doc_id)
+
+    print("✅ Doombot report complete.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
 
 
 
