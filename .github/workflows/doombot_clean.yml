@@ -1,35 +1,36 @@
-name: Doombot Weekly Site Check
+name: Doombot Weekly Review
 
 on:
-  workflow_dispatch:        # Manual trigger
   schedule:
-    - cron: '0 10 * * 1'     # 5 am Central (10 am UTC) every Monday
+    - cron: '0 10 * * 1'  # Runs at 5am Central (10am UTC) every Monday
+  workflow_dispatch:
 
 jobs:
-  weekly-review:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 🧾 Checkout repository
-        uses: actions/checkout@v4
+    - name: 🧽 Checkout repo
+      uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'        # ← quoted so 3.10 isn’t read as 3.1
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
 
-      - name: 📦 Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+    - name: 📦 Install dependencies + Playwright
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        python -m playwright install
 
-      - name: 🚀 Run Doombot Weekly Site Check
-        run: |
-          python main.py
+    - name: 🚀 Run Doombot Weekly Site Check
+      run: python main.py
 
-      - name: 📁 Upload weekly report
-        uses: actions/upload-artifact@v4
-        with:
-          name: doombot-weekly-report
-          path: weekly_report.md
+    - name: 📤 Upload report
+      uses: actions/upload-artifact@v4
+      with:
+        name: doombot-weekly-report
+        path: weekly_report.md
+
 
