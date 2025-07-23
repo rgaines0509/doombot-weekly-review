@@ -1,5 +1,6 @@
-requests
+playwright
 beautifulsoup4
+language_tool_python
 lxml
-language-tool-python
-httpx
+requests
+
