@@ -6,8 +6,18 @@ import requests
 MAX_LINK_TIMEOUT = 5
 
 async def check_page(page, url):
-    print(f"\n🧪 Checking: {url}")
-    await page.goto(url, wait_until="networkidle")
+    print(f"\n⏳ Navigating to {url} ...")
+    try:
+        await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+    except Exception as e:
+        print(f"❌ Page load failed or timed out for {url}: {e}")
+        return {
+            "url": url,
+            "error": f"Page load failed: {e}",
+            "broken_links": [],
+            "dropdowns": [],
+            "grammar_errors": ["⚠️ Page failed to load — grammar check skipped."]
+        }
 
     # Collect all links
     links = await page.eval_on_selector_all("a[href]", "elements => elements.map(el => el.href)")
@@ -32,8 +42,8 @@ async def check_page(page, url):
         except Exception:
             dropdown_results.append("Fail")
 
-    # Skip grammar entirely for speed
-    grammar_errors = ["⚠️ Grammar check disabled for performance testing."]
+    # Skip grammar entirely for performance testing
+    grammar_errors = ["⚠️ Grammar check disabled for performance test."]
 
     return {
         "url": url,
@@ -60,5 +70,7 @@ async def run_check(urls):
         await browser.close()
 
     return report
+
+
 
 
