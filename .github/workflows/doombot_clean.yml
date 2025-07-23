@@ -1,0 +1,38 @@
+name: Doombot Weekly Site Check
+
+on:
+  schedule:
+    - cron: '0 10 * * 1'  # 5am Central (10am UTC) every Monday
+  workflow_dispatch:
+
+jobs:
+  run-doombot-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧹 Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🌐 Install Playwright Browsers
+        run: |
+          python -m playwright install
+
+      - name: 🚀 Run Doombot Weekly Site Check
+        run: |
+          python main.py
+
+      - name: 📁 Upload weekly report
+        uses: actions/upload-artifact@v3
+        with:
+          name: doombot-weekly-report
+          path: weekly_report.md
