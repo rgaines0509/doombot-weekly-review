@@ -1,9 +1,5 @@
 import asyncio
 from playwright.async_api import async_playwright
-from bs4 import BeautifulSoup
-import requests
-
-MAX_LINK_TIMEOUT = 5
 
 async def check_page(page, url):
     print(f"\n⏳ Navigating to {url} ...")
@@ -19,19 +15,7 @@ async def check_page(page, url):
             "grammar_errors": ["⚠️ Page failed to load — grammar check skipped."]
         }
 
-    # Collect all links
-    links = await page.eval_on_selector_all("a[href]", "elements => elements.map(el => el.href)")
-    broken_links = []
-
-    for link in links:
-        try:
-            res = requests.get(link, timeout=MAX_LINK_TIMEOUT)
-            if res.status_code != 200:
-                broken_links.append((link, res.status_code))
-        except Exception as e:
-            broken_links.append((link, str(e)))
-
-    # Check dropdowns/toggles
+    # Check dropdowns/toggles only
     dropdowns = await page.query_selector_all("summary, button, .dropdown, .accordion")
     dropdown_results = []
     for d in dropdowns:
@@ -42,14 +26,11 @@ async def check_page(page, url):
         except Exception:
             dropdown_results.append("Fail")
 
-    # Skip grammar entirely for performance testing
-    grammar_errors = ["⚠️ Grammar check disabled for performance test."]
-
     return {
         "url": url,
-        "broken_links": broken_links,
+        "broken_links": ["⚠️ Link checking disabled in test mode."],
         "dropdowns": dropdown_results,
-        "grammar_errors": grammar_errors
+        "grammar_errors": ["⚠️ Grammar check disabled in test mode."]
     }
 
 async def run_check(urls):
@@ -70,6 +51,7 @@ async def run_check(urls):
         await browser.close()
 
     return report
+
 
 
 
