@@ -1,6 +1,7 @@
 aiohttp==3.9.5
 beautifulsoup4==4.12.3
+bs4==0.0.2
 language-tool-python==2.7.1
 playwright==1.43.0
-bs4==0.0.2
+
 
