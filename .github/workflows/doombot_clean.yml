@@ -32,7 +32,7 @@ jobs:
           python main.py
 
       - name: 📁 Upload weekly report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: doombot-weekly-report
           path: weekly_report.md
