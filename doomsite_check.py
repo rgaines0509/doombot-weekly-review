@@ -1,8 +1,8 @@
 import asyncio
-import aiohttp
-from bs4 import BeautifulSoup
-from language_tool_python import LanguageTool
+import re
 from playwright.async_api import async_playwright
+from bs4 import BeautifulSoup
+import aiohttp
 
 URLS_TO_CHECK = [
     "https://quickbookstraining.com/",
@@ -22,87 +22,82 @@ URLS_TO_CHECK = [
     "https://quickbookstraining.com/privacy-policy"
 ]
 
-# Use the public API instead of trying to start a server
-tool = LanguageTool('en-US', remote_server='https://api.languagetool.org/v2/')
+LANGUAGETOOL_ENDPOINT = "https://api.languagetool.org/v2/check"
 
-async def check_links(session, url):
-    broken_links = []
+async def check_grammar(text, session):
+    if not text or len(text.strip()) < 10:
+        return ["⚠️ No readable text to analyze."]
     try:
-        async with session.get(url, timeout=15) as response:
-            if response.status != 200:
-                return [(url, response.status)]
-            html = await response.text()
-            soup = BeautifulSoup(html, 'html.parser')
-            links = soup.find_all('a', href=True)
-            for link in links:
-                href = link['href']
-                if href.startswith("http"):
-                    try:
-                        async with session.get(href, timeout=10) as link_response:
-                            if link_response.status >= 400:
-                                broken_links.append((href, link_response.status))
-                    except Exception:
-                        broken_links.append((href, "timeout/fail"))
-            return broken_links
-    except Exception:
-        return [(url, "page-load-failure")]
+        payload = {
+            "text": text[:5000],  # Cap for API safety
+            "language": "en-US"
+        }
+        async with session.post(LANGUAGETOOL_ENDPOINT, data=payload) as resp:
+            if resp.status != 200:
+                return [f"❌ LanguageTool API error: {resp.status}"]
+            data = await resp.json()
+            return [
+                f"{match['rule']['issueType'].upper()}: {match['message']} (Context: '{match['context']['text']}')"
+                for match in data.get("matches", [])
+            ]
+    except Exception as e:
+        return [f"❌ Grammar check failed: {str(e)}"]
 
-async def check_dropdowns(page):
-    dropdowns = []
-    elements = await page.query_selector_all('[aria-expanded], .dropdown, nav ul li')
-    for el in elements:
-        try:
-            visible = await el.is_visible()
-            if not visible:
-                dropdowns.append("Fail")
-            else:
-                dropdowns.append("Pass")
-        except Exception:
-            dropdowns.append("Fail")
-    return dropdowns
-
-async def analyze_page(playwright, session, url):
-    print(f"🔍 Checking {url}")
+async def analyze_page(url, session, playwright):
     result = {"url": url, "broken_links": [], "dropdowns": [], "grammar_errors": []}
 
     try:
         browser = await playwright.chromium.launch()
         page = await browser.new_page()
-        await page.goto(url)
-        dropdown_results = await check_dropdowns(page)
-        result["dropdowns"] = dropdown_results
-        html = await page.content()
+        response = await page.goto(url)
+
+        if not response or not response.ok:
+            result["error"] = f"Page load failed (status: {response.status if response else 'N/A'})"
+            await browser.close()
+            return result
+
+        # Extract page content
+        content = await page.content()
+        soup = BeautifulSoup(content, "html.parser")
+
+        # Check dropdowns
+        dropdowns = soup.find_all("details")
+        for d in dropdowns:
+            try:
+                handle = await page.query_selector("details")
+                if handle:
+                    visible = await handle.is_visible()
+                    result["dropdowns"].append("Pass" if visible else "Fail")
+            except:
+                result["dropdowns"].append("Fail")
+
+        # Check all links
+        links = [a.get("href") for a in soup.find_all("a", href=True) if a.get("href").startswith("http")]
+        for link in links:
+            try:
+                async with session.get(link, timeout=10) as resp:
+                    if resp.status >= 400:
+                        result["broken_links"].append((link, resp.status))
+            except:
+                result["broken_links"].append((link, "Request failed"))
+
+        # Grammar/spelling check
+        page_text = soup.get_text(separator=' ', strip=True)
+        result["grammar_errors"] = await check_grammar(page_text, session)
+
         await browser.close()
+
     except Exception as e:
-        result["error"] = f"Failed to load with Playwright: {str(e)}"
-        return result
-
-    soup = BeautifulSoup(html, 'html.parser')
-
-    # Link Check
-    result["broken_links"] = await check_links(session, url)
-
-    # Grammar Check (Safe mode)
-    try:
-        text = soup.get_text(separator=' ', strip=True)
-        if text and len(text.strip()) > 10:
-            matches = tool.check(text[:5000])
-            grammar_errors = [f"{m.ruleIssueType.upper()}: {m.message} (Context: '{m.context.text}')" for m in matches]
-            result["grammar_errors"] = grammar_errors
-        else:
-            result["grammar_errors"] = ["⚠️ No readable text to analyze."]
-    except Exception as e:
-        result["grammar_errors"] = [f"⚠️ Grammar check failed: {str(e)}"]
+        result["error"] = str(e)
 
     return result
 
 async def run_check(urls):
-    async with aiohttp.ClientSession() as session:
-        async with async_playwright() as p:
-            tasks = [analyze_page(p, session, url) for url in urls]
+    async with async_playwright() as playwright:
+        async with aiohttp.ClientSession() as session:
+            tasks = [analyze_page(url, session, playwright) for url in urls]
             results = await asyncio.gather(*tasks)
-            return results
-
+    return results
 
 
 
