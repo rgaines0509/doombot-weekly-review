@@ -85,30 +85,8 @@ def send_report_to_slack(doc_id):
 
 
 async def main():
-    print("🚀 Doombot Report Starting...")
-    results = await run_check(URLS_TO_CHECK)
+    print("🚀 Doomb
 
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    full_report = f"Doombot Weekly Report - {timestamp}\n\n"
-    for result in results:
-        full_report += result + "\n\n"
-
-    print("📝 Connecting to Google Docs API...")
-    creds = get_service_account_credentials()
-    docs_service = build('docs', 'v1', credentials=creds)
-    doc_id = find_or_create_doc(docs_service, DOC_TITLE)
-
-    print("📊 Writing report to Google Doc...")
-    write_report_to_google_doc(full_report, doc_id, docs_service)
-
-    print("📣 Notifying Slack...")
-    send_report_to_slack(doc_id)
-
-    print("✅ Doombot report complete.")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
 
 
 
