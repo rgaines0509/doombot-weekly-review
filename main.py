@@ -23,7 +23,7 @@ URLS_TO_CHECK = [
 def format_report(results):
     lines = [
         f"# 🧾 Doombot Weekly Website Review",
-        f"Version: DoomCheck v2025.07.23",
+        f"Version: DoomCheck v2025.07.23 (no grammar, no Playwright)",
         f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
     ]
 
@@ -42,33 +42,37 @@ def format_report(results):
         else:
             lines.append("✅ No broken links found.")
 
-        # Dropdown toggle results
+        # Dropdown results
         if res["dropdowns"]:
-            failed = res["dropdowns"].count("Fail")
-            total = len(res["dropdowns"])
-            lines.append(f"📂 Dropdowns tested: {total}, Passed: {total - failed}, Failed: {failed}")
+            lines.append("📂 Dropdown-like elements detected:")
+            for d in res["dropdowns"]:
+                lines.append(f"- {d}")
         else:
-            lines.append("ℹ️ No dropdowns found on this page.")
+            lines.append("ℹ️ No dropdown-style elements found.")
 
-        # Grammar & spelling
+        # Grammar/skipped notes
         if res["grammar_errors"]:
-            lines.append("📝 **Grammar/Spelling Issues:**")
+            lines.append("📝 **Grammar/Spelling Status:**")
             for err in res["grammar_errors"]:
                 lines.append(f"- {err}")
         else:
-            lines.append("✅ No grammar or spelling issues found.")
+            lines.append("✅ No grammar/spelling notes reported.")
 
     return "\n".join(lines)
 
 async def main():
-    print("🧠 DoomCheck v2025.07.23 — This is the NEW main.py running.")
+    print("🚀 Doombot Report Starting (No grammar, no Playwright)...")
+
     results = await run_check(URLS_TO_CHECK)
+
+    print("📊 Report generated, writing to file...")
+
     report_text = format_report(results)
 
     with open("weekly_report.md", "w", encoding="utf-8") as f:
         f.write(report_text)
 
-    print("✅ Weekly report generated: weekly_report.md")
+    print("✅ weekly_report.md written. Doombot Check Complete.")
 
 if __name__ == "__main__":
     asyncio.run(main())
