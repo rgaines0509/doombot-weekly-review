@@ -21,7 +21,11 @@ URLS_TO_CHECK = [
 ]
 
 def format_report(results):
-    lines = [f"# 🧾 Doombot Weekly Website Review\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"]
+    lines = [
+        f"# 🧾 Doombot Weekly Website Review",
+        f"Version: DoomCheck v2025.07.23",
+        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+    ]
 
     for res in results:
         lines.append(f"\n---\n## 🔗 URL: {res['url']}")
@@ -57,6 +61,7 @@ def format_report(results):
     return "\n".join(lines)
 
 async def main():
+    print("🧠 DoomCheck v2025.07.23 — This is the NEW main.py running.")
     results = await run_check(URLS_TO_CHECK)
     report_text = format_report(results)
 
@@ -67,3 +72,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
