@@ -1,79 +1,123 @@
-"""
-Doombot Site Checker – Fast version
-- No Playwright, no LanguageTool
-- Checks ONLY the first 10 links per page
-- Scans all URLs concurrently for max speed
-"""
-
+import aiohttp
 import asyncio
-import urllib.parse
-from datetime import datetime
-from typing import List, Dict, Any
-
-import requests
 from bs4 import BeautifulSoup
+import re
+from language_tool_python import LanguageTool
+from playwright.async_api import async_playwright
 
-# ─────────────── CONFIG ──────────────────────────────────────────────────────
-PAGE_TIMEOUT      = 15      # seconds for the main page fetch
-LINK_TIMEOUT      = 5       # seconds for each link HEAD/GET
-MAX_LINKS_PER_PAGE = 10     # <── Option 1: cap link checks here
-DROPDOWN_KEYWORDS = ("dropdown", "accordion", "collapse")
-HEADERS           = {"User-Agent": "DoombotSiteChecker/1.0"}
-# ─────────────────────────────────────────────────────────────────────────────
+tool = LanguageTool('en-US')
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; Doombot/1.0; +https://quickbookstraining.com)"
+}
 
-# ─────────────── HELPERS ─────────────────────────────────────────────────────
-def _abs_url(base: str, link: str) -> str:
-    """Resolve relative link to absolute URL."""
-    return urllib.parse.urljoin(base, link)
-
-
-def _fetch(url: str, timeout: int) -> requests.Response:
-    """Blocking HTTP GET wrapped later in asyncio.to_thread."""
-    return requests.get(url, timeout=timeout, headers=HEADERS, allow_redirects=True)
-
-
-def _find_dropdowns(soup: BeautifulSoup) -> List[str]:
-    """Return snippets of elements that look like dropdowns/accordions."""
-    dropdowns = []
-
-    dropdowns += [str(tag)[:80] + "…" for tag in soup.find_all("summary")]
-
-    dropdowns += [
-        str(tag)[:80] + "…"
-        for tag in soup.find_all("button", attrs={"aria-expanded": True})
-    ]
-
-    dropdowns += [
-        str(tag)[:80] + "…"
-        for kw in DROPDOWN_KEYWORDS
-        for tag in soup.select(f'.{kw}')
-    ]
-
-    return dropdowns
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-# ─────────────── PER-PAGE CHECK ──────────────────────────────────────────────
-async def check_single_url(url: str) -> Dict[str, Any]:
-    print(f"🔍 Fetching {url}")
+async def fetch_page(url, session):
     try:
-        resp = await asyncio.to_thread(_fetch, url, PAGE_TIMEOUT)
-        html = resp.text
-        status = resp.status_code
+        async with session.get(url, headers=HEADERS) as response:
+            html = await response.text()
+            return html, response.status
     except Exception as e:
-        return {"url": url, "error": str(e), "checked_at": datetime.utcnow().isoformat()}
+        return None, str(e)
 
-    if status != 200:
-        return {"url": url, "error": f"HTTP {status}", "checked_at": datetime.utcnow().isoformat()}
+def extract_links(html, base_url):
+    soup = BeautifulSoup(html, "html.parser")
+    links = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if href.startswith("http") or href.startswith("/"):
+            full_url = href if href.startswith("http") else base_url.rstrip("/") + href
+            links.append(full_url)
+    return links
 
-    soup = BeautifulSoup(html, "lxml")
+def extract_text_with_context(html):
+    soup = BeautifulSoup(html, "html.parser")
+    text_blocks = []
 
-    # -- Broken-link scan (first 10 links only) -------------------------------
-    links = [a.get("href") for a in soup.find_all("a", href=True)][:MAX_LINKS_PER_PAGE]
-    broken_links = []
+    for tag in soup.find_all(string=True):
+        text = tag.strip()
+        if text and len(text.split()) > 2:
+            path = " > ".join(
+                [parent.name for parent in tag.parents if parent.name not in ["html", "body"]][::-1]
+            )
+            text_blocks.append((path, text))
+    return text_blocks
 
-    async def check_l_
+async def check_link(url, session):
+    try:
+        async with session.get(url, headers=HEADERS, timeout=10) as response:
+            return url, response.status
+    except Exception:
+        return url, "error"
+
+async def check_dropdowns(url, page):
+    dropdown_results = []
+    try:
+        await page.goto(url, timeout=60000)
+        dropdowns = await page.query_selector_all("button, summary")
+        for dropdown in dropdowns:
+            try:
+                visible = await dropdown.is_visible()
+                if not visible:
+                    dropdown_results.append("Fail")
+                    continue
+                await dropdown.click()
+                dropdown_results.append("Pass")
+            except Exception:
+                dropdown_results.append("Fail")
+    except Exception:
+        dropdown_results.append("Fail")
+    return dropdown_results
+
+async def analyze_page(url, session, browser):
+    result = {"url": url}
+    html, status = await fetch_page(url, session)
+
+    if html is None:
+        result["error"] = f"Unable to load: {status}"
+        return result
+
+    result["broken_links"] = []
+    result["dropdowns"] = []
+    result["grammar_errors"] = []
+
+    # Check links
+    links = extract_links(html, url)
+    link_tasks = [check_link(link, session) for link in links]
+    link_results = await asyncio.gather(*link_tasks)
+
+    for link, code in link_results:
+        if isinstance(code, int) and (code >= 400 or code == 0):
+            result["broken_links"].append((link, code))
+        elif code == "error":
+            result["broken_links"].append((link, code))
+
+    # Check dropdowns
+    page = await browser.new_page()
+    dropdowns = await check_dropdowns(url, page)
+    await page.close()
+    result["dropdowns"] = dropdowns
+
+    # Grammar/spelling
+    text_blocks = extract_text_with_context(html)
+    grammar_issues = []
+    for path, text in text_blocks:
+        matches = tool.check(text)
+        for match in matches:
+            snippet = f"{path}: {text[match.offset:match.offset + match.errorLength]}"
+            grammar_issues.append(snippet)
+    result["grammar_errors"] = grammar_issues
+
+    return result
+
+async def run_check(urls):
+    async with aiohttp.ClientSession() as session:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            tasks = [analyze_page(url, session, browser) for url in urls]
+            results = await asyncio.gather(*tasks)
+            await browser.close()
+    return results
+
 
 
 
