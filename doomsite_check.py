@@ -5,7 +5,7 @@ import re
 from language_tool_python import LanguageTool
 from playwright.async_api import async_playwright
 
-tool = LanguageTool('en-US')
+tool = LanguageTool('en-US', remote_server='https://api.languagetoolplus.com')
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; Doombot/1.0; +https://quickbookstraining.com)"
