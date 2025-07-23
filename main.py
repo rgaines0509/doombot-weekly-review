@@ -1,6 +1,14 @@
+import os
+import json
 import asyncio
-from datetime import datetime
+import logging
 from doomsite_check import run_check
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from datetime import datetime
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 URLS_TO_CHECK = [
     "https://quickbookstraining.com/",
@@ -17,64 +25,64 @@ URLS_TO_CHECK = [
     "https://quickbookstraining.com/quickbooks-certification-online",
     "https://quickbookstraining.com/quickbooks-certification-exam",
     "https://quickbookstraining.com/terms-and-conditions",
-    "https://quickbookstraining.com/privacy-policy"
+    "https://quickbookstraining.com/privacy-policy",
+    "https://quickbookstraining.com/learn-quickbooks"
 ]
 
-def format_report(results):
-    lines = [
-        f"# 🧾 Doombot Weekly Website Review",
-        f"Version: DoomCheck v2025.07.23 (no grammar, no Playwright)",
-        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
-    ]
+GOOGLE_DOC_TITLE = "Doombot Weekly Website Review"
 
-    for res in results:
-        lines.append(f"\n---\n## 🔗 URL: {res['url']}")
+def authenticate_docs_api():
+    key_path = "service_account_key.json"
+    credentials = service_account.Credentials.from_service_account_file(
+        key_path, scopes=["https://www.googleapis.com/auth/documents"]
+    )
+    return build('docs', 'v1', credentials=credentials)
 
-        if "error" in res:
-            lines.append(f"❌ Error loading page: {res['error']}")
-            continue
+def get_or_create_doc(service, title):
+    docs = service.documents()
+    # Try to find the document by title (optional, could be cached)
+    body = {"title": title}
+    doc = docs.create(body=body).execute()
+    return doc['documentId']
 
-        # Broken links
-        if res["broken_links"]:
-            lines.append("🚨 **Broken Links Found:**")
-            for link, code in res["broken_links"]:
-                lines.append(f"- {link} (status: {code})")
-        else:
-            lines.append("✅ No broken links found.")
+def write_to_google_doc(service, doc_id, content_lines):
+    requests = []
+    # Clear existing content first
+    requests.append({"deleteContentRange": {"range": {"startIndex": 1, "endIndex": 1_000_000}}})
 
-        # Dropdown results
-        if res["dropdowns"]:
-            lines.append("📂 Dropdown-like elements detected:")
-            for d in res["dropdowns"]:
-                lines.append(f"- {d}")
-        else:
-            lines.append("ℹ️ No dropdown-style elements found.")
+    # Add the new content
+    for line in content_lines:
+        requests.append({
+            "insertText": {
+                "location": {"index": 1},
+                "text": line + "\n"
+            }
+        })
 
-        # Grammar/skipped notes
-        if res["grammar_errors"]:
-            lines.append("📝 **Grammar/Spelling Status:**")
-            for err in res["grammar_errors"]:
-                lines.append(f"- {err}")
-        else:
-            lines.append("✅ No grammar/spelling notes reported.")
-
-    return "\n".join(lines)
+    service.documents().batchUpdate(documentId=doc_id, body={"requests": requests}).execute()
 
 async def main():
-    print("🚀 Doombot Report Starting (No grammar, no Playwright)...")
-
+    logger.info("🚀 Doombot Report Starting...")
     results = await run_check(URLS_TO_CHECK)
 
-    print("📊 Report generated, writing to file...")
+    # Format the report
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    report_lines = [f"# Doombot Weekly Website Review", f"Generated: {now}", ""]
+    for result in results:
+        report_lines.append(f"## {result['url']}")
+        report_lines.extend(result['report'])
+        report_lines.append("")
 
-    report_text = format_report(results)
+    # Save to Google Docs
+    logger.info("📄 Authenticating and writing report to Google Docs...")
+    service = authenticate_docs_api()
+    doc_id = get_or_create_doc(service, GOOGLE_DOC_TITLE)
+    write_to_google_doc(service, doc_id, report_lines)
 
-    with open("weekly_report.md", "w", encoding="utf-8") as f:
-        f.write(report_text)
-
-    print("✅ weekly_report.md written. Doombot Check Complete.")
+    logger.info("✅ Google Doc updated successfully.")
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
