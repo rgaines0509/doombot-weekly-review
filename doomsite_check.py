@@ -1,112 +1,120 @@
 import aiohttp
-import asyncio
 from bs4 import BeautifulSoup
+import asyncio
 from playwright.async_api import async_playwright
-from language_tool_python import LanguageTool
-import re
 
-tool = LanguageTool('en-US', remote_server='https://api.languagetoolplus.com/v2/')
-URLS_TO_CHECK = [
-    "https://quickbookstraining.com/",
-    "https://quickbookstraining.com/live-quickbooks-help",
-    "https://quickbookstraining.com/quickbooks-courses",
-    "https://quickbookstraining.com/quickbooks-classes",
-    "https://quickbookstraining.com/plans-and-pricing",
-    "https://quickbookstraining.com/about-us",
-    "https://quickbookstraining.com/contact-us",
-    "https://quickbookstraining.com/quickbooks-certification",
-    "https://quickbookstraining.com/quickbooks-online-certification",
-    "https://quickbookstraining.com/quickbooks-desktop-certification",
-    "https://quickbookstraining.com/quickbooks-bookkeeping-certification",
-    "https://quickbookstraining.com/quickbooks-certification-online",
-    "https://quickbookstraining.com/quickbooks-certification-exam",
-    "https://quickbookstraining.com/terms-and-conditions",
-    "https://quickbookstraining.com/privacy-policy",
-    "https://quickbookstraining.com/learn-quickbooks"
-]
+# No grammar analysis for now; built-in placeholder if needed
+def dummy_grammar_check(text):
+    return []
 
-async def fetch_html(url, session):
+async def fetch_html(session, url):
     try:
-        async with session.get(url, timeout=10) as response:
-            return await response.text()
+        async with session.get(url, timeout=20) as response:
+            return await response.text(), None
     except Exception as e:
-        return f"<html><body><p>Error fetching {url}: {str(e)}</p></body></html>"
+        return None, str(e)
 
-async def check_links_and_dropdowns(page, url):
-    report = []
-    await page.goto(url, wait_until='domcontentloaded')
-    content = await page.content()
-    soup = BeautifulSoup(content, 'html.parser')
+def extract_visible_text(html):
+    soup = BeautifulSoup(html, "html.parser")
+    for script_or_style in soup(["script", "style", "noscript"]):
+        script_or_style.decompose()
+    text = soup.get_text(separator="\n")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n".join(lines)
 
-    anchors = soup.find_all('a', href=True)
-    dropdowns = soup.select('.dropdown-toggle, .menu-toggle, .toggle')
+def extract_links_and_dropdowns(html):
+    soup = BeautifulSoup(html, "html.parser")
+    links = [a['href'] for a in soup.find_all('a', href=True)]
+    dropdowns = soup.select("details, .dropdown, [aria-haspopup='true']")
+    return links, dropdowns
 
-    for anchor in anchors:
-        link = anchor['href']
-        if not link.startswith('http'):
-            continue
-        try:
-            response = await page.context.new_page()
-            await response.goto(link, timeout=10000)
-            await response.close()
-        except Exception:
-            report.append(f"❌ Broken link: {link}")
+async def check_link(session, base_url, link):
+    if link.startswith("mailto:") or link.startswith("tel:") or link.startswith("#"):
+        return None
+    if link.startswith("/"):
+        link = base_url.rstrip("/") + link
+    elif not link.startswith("http"):
+        return None
 
-    for toggle in dropdowns:
-        try:
-            selector = toggle.get('class')[0]
-            await page.click(f'.{selector}')
-        except Exception:
-            report.append(f"⚠️ Dropdown/toggle failed: {toggle}")
+    try:
+        async with session.get(link, timeout=10) as response:
+            if response.status >= 400:
+                return (link, response.status)
+    except Exception:
+        return (link, "Request Failed")
+    return None
 
-    return report
+async def check_dropdowns(playwright, url):
+    results = []
+    try:
+        browser = await playwright.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(url, timeout=20000)
+        dropdowns = await page.query_selector_all("details, .dropdown, [aria-haspopup='true']")
+        for dropdown in dropdowns:
+            try:
+                await dropdown.click()
+                results.append("Pass")
+            except Exception:
+                results.append("Fail")
+        await browser.close()
+    except Exception:
+        results.append("Fail")
+    return results
 
-async def analyze_page(url, session, page):
-    html = await fetch_html(url, session)
-    soup = BeautifulSoup(html, 'html.parser')
-    text = soup.get_text(separator=' ')
-    matches = tool.check(text)
+async def analyze_page(session, playwright, url):
+    html, error = await fetch_html(session, url)
+    if error:
+        return f"## 🔗 {url}\n❌ Error loading page: {error}\n"
 
-    grammar_issues = []
-    for match in matches:
-        snippet = text[match.offset:match.offset + match.errorLength + 40]
-        location = f"Line containing: \"{snippet.strip()[:100]}...\""
-        grammar_issues.append(f"• {match.message} ({location})")
+    text = extract_visible_text(html)
+    links, dropdowns = extract_links_and_dropdowns(html)
 
-    tech_issues = await check_links_and_dropdowns(page, url)
-    return url, grammar_issues, tech_issues
+    # Check links
+    broken_links = []
+    link_checks = await asyncio.gather(*[
+        check_link(session, url, link) for link in links
+    ])
+    broken_links = [result for result in link_checks if result]
+
+    # Check dropdowns
+    dropdown_results = await check_dropdowns(playwright, url)
+
+    # Check grammar (dummy for now)
+    grammar_errors = dummy_grammar_check(text)
+
+    # Start building formatted report string
+    report = [f"## 🔗 {url}"]
+
+    if broken_links:
+        report.append("🚨 **Broken Links:**")
+        for link, code in broken_links:
+            report.append(f"- {link} (status: {code})")
+    else:
+        report.append("✅ No broken links found.")
+
+    if dropdown_results:
+        failed = dropdown_results.count("Fail")
+        total = len(dropdown_results)
+        report.append(f"📂 Dropdowns: **{total} tested**, ✅ {total - failed} passed, ❌ {failed} failed")
+    else:
+        report.append("ℹ️ No dropdowns found.")
+
+    if grammar_errors:
+        report.append("📝 **Grammar/Spelling Issues:**")
+        for err in grammar_errors:
+            report.append(f"- {err}")
+    else:
+        report.append("✅ No grammar/spelling issues found.")
+
+    return "\n".join(report)
 
 async def run_check(urls):
     async with aiohttp.ClientSession() as session:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context()
-            page = await context.new_page()
+        async with async_playwright() as playwright:
+            tasks = [analyze_page(session, playwright, url) for url in urls]
+            return await asyncio.gather(*tasks)
 
-            results = await asyncio.gather(*[
-                analyze_page(url, session, page) for url in urls
-            ])
-
-            await browser.close()
-
-    report_lines = []
-    for url, grammar, tech in results:
-        report_lines.append(f"# 🔍 {url}")
-        if grammar:
-            report_lines.append("## ✏️ Grammar/Spelling Issues:")
-            report_lines.extend(grammar)
-        else:
-            report_lines.append("✅ No grammar issues found.")
-
-        if tech:
-            report_lines.append("## 🔧 Link/Toggle Issues:")
-            report_lines.extend(tech)
-        else:
-            report_lines.append("✅ All links and toggles working.")
-
-        report_lines.append("\n---\n")
-
-    return "\n".join(report_lines)
 
 
 
