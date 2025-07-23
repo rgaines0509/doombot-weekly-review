@@ -57,5 +57,34 @@ async def check_page(page, url):
             grammar_errors.append("⚠️ Grammar check timed out on this page.")
         except Exception as e:
             grammar_errors.append(f"⚠️ Grammar check failed: {str(e)}")
-    elif not visible
+    elif not visible_text:
+        grammar_errors.append("⚠️ No visible text found on page.")
+    else:
+        grammar_errors.append("⚠️ Page content too long — grammar check skipped.")
+
+    return {
+        "url": url,
+        "broken_links": broken_links,
+        "dropdowns": dropdown_results,
+        "grammar_errors": grammar_errors
+    }
+
+async def run_check(urls):
+    report = []
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+
+        for url in urls:
+            try:
+                result = await check_page(page, url)
+                report.append(result)
+            except Exception as e:
+                report.append({"url": url, "error": str(e)})
+                print(f"❌ Error checking {url}: {e}")
+
+        await browser.close()
+
+    return report
 
