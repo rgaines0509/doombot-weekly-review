@@ -31,8 +31,9 @@ async def main():
     ])
 
     markdown = format_report(results)
-    with open("weekly_report.md", "w", encoding="utf-8") as f:
-        f.write(markdown)
+    with open("weekly_report.md", "w", encoding="utf-8", errors="ignore") as f:
+    f.write(markdown)
+
 
     print("\u2705 weekly_report.md written. Doombot Check Complete.")
 
