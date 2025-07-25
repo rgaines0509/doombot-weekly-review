@@ -22,21 +22,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Install Playwright Browsers
+        run: python -m playwright install
+
       - name: Create Service Account Key File
         run: echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}" > service_account_key.json
 
       - name: Run Doombot Weekly Site Check
-        env:
-          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: |
-          python main.py
+        run: python main.py
 
       - name: Upload Report Artifact
         uses: actions/upload-artifact@v4
         with:
           name: weekly_report_backup
           path: weekly_report.md
+
 
 
 
