@@ -21,21 +21,18 @@ URLS_TO_CHECK = [
     "https://quickbookstraining.com/learn-quickbooks"
 ]
 
-def format_markdown(report_sections):
+def format_report(sections):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    output = [f"# 🧾 Doombot Weekly Website Review", f"**Generated:** {timestamp}", ""]
-    for section in report_sections:
-        output.append(section)
-    return "\n".join(output)
+    header = f"# 🧾 Doombot Weekly Website Review\n\n**Generated:** {timestamp}\n\n"
+    return header + "\n".join(sections)
 
 async def main():
-    print("🚀 Doombot Report Starting (Markdown only)...")
+    print("🚀 Doombot Report Starting...")
     results = await run_check(URLS_TO_CHECK)
 
-    report_md = format_markdown(results)
-
+    markdown = format_report(results)
     with open("weekly_report.md", "w", encoding="utf-8") as f:
-        f.write(report_md)
+        f.write(markdown)
 
     print("✅ weekly_report.md written. Doombot Check Complete.")
 
