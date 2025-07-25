@@ -22,8 +22,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Create Google Service Account Key File
-        run: echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}" > service_account_key.json
+      - name: Install Playwright Browsers
+        run: |
+          python -m playwright install --with-deps
 
       - name: Run Doombot
         run: python main.py
@@ -33,6 +34,7 @@ jobs:
         with:
           name: weekly_report_backup
           path: weekly_report.md
+
 
 
 
