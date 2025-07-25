@@ -29,7 +29,7 @@ URLS_TO_CHECK = [
 DOC_TITLE = "Doombot Weekly Website Review"
 SCOPES = ['https://www.googleapis.com/auth/documents', 'https://www.googleapis.com/auth/drive']
 GOOGLE_DOC_MIME = 'application/vnd.google-apps.document'
-SHARE_EMAIL = 'rgaines@quickbookstraining.com'
+
 
 def get_service_account_credentials():
     service_account_info = os.environ['GOOGLE_SERVICE_ACCOUNT_KEY']
@@ -38,6 +38,7 @@ def get_service_account_credentials():
         service_account_json,
         scopes=SCOPES
     )
+
 
 def find_or_create_doc(service, title):
     drive_service = build('drive', 'v3', credentials=service._credentials)
@@ -48,6 +49,10 @@ def find_or_create_doc(service, title):
     ).execute()
     items = results.get('files', [])
 
+    print("🔍 Listing current docs visible to the service account:")
+    for item in items:
+        print(f"- {item['name']} (ID: {item['id']})")
+
     if items:
         print(f"📄 Found existing doc: {items[0]['name']} (ID: {items[0]['id']})")
         return items[0]['id']
@@ -57,18 +62,19 @@ def find_or_create_doc(service, title):
         doc_id = doc.get('documentId')
         print(f"🆕 Created new doc: {doc.get('title')} (ID: {doc_id})")
 
-        # Share with user
+        # Share doc with public for testing
         drive_service.permissions().create(
             fileId=doc_id,
             body={
-                'type': 'user',
+                'type': 'anyone',
                 'role': 'writer',
-                'emailAddress': SHARE_EMAIL
             },
             fields='id'
         ).execute()
-        print(f"👥 Shared doc with {SHARE_EMAIL}")
+        print(f"🌐 Shared doc with anyone who has the link (temporary)")
+
         return doc_id
+
 
 def write_report_to_google_doc(report, document_id, service):
     body = {
@@ -83,6 +89,7 @@ def write_report_to_google_doc(report, document_id, service):
     }
     service.documents().batchUpdate(documentId=document_id, body=body).execute()
 
+
 def send_report_to_slack(doc_id):
     webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
     doc_link = f"https://docs.google.com/document/d/{doc_id}/edit"
@@ -94,6 +101,7 @@ def send_report_to_slack(doc_id):
         print("Slack webhook failed:", response.text)
     else:
         print("📤 Sent report to Slack!")
+
 
 async def main():
     print("🚀 Doombot Report Starting...")
@@ -114,6 +122,7 @@ async def main():
 
     print("✅ Doombot report complete. View it here:")
     print(f"https://docs.google.com/document/d/{doc_id}/edit")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
