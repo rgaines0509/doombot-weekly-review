@@ -4,6 +4,7 @@ from datetime import datetime
 from doomsite_check import run_check
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+import requests
 import json
 
 URLS_TO_CHECK = [
@@ -48,10 +49,7 @@ def find_or_create_doc(service, title):
     ).execute()
     items = results.get('files', [])
 
-    print("🔍 Listing current docs visible to the service account:")
-    for item in items:
-        print(f"- {item['name']} (ID: {item['id']})")
-
+    print("🔍 Checking for existing Google Doc...")
     if items:
         print(f"📄 Found existing doc: {items[0]['name']} (ID: {items[0]['id']})")
         return items[0]['id']
@@ -61,7 +59,7 @@ def find_or_create_doc(service, title):
         doc_id = doc.get('documentId')
         print(f"🆕 Created new doc: {doc.get('title')} (ID: {doc_id})")
 
-        # Share doc with the site owner
+        # Share doc with Ron
         drive_service.permissions().create(
             fileId=doc_id,
             body={
