@@ -23,7 +23,7 @@ URLS_TO_CHECK = [
     "https://quickbookstraining.com/learn-quickbooks"
 ]
 
-tool = LanguageTool('en-US')
+tool = LanguageTool('en-US', remote_server='https://api.languagetool.org/v2/')
 
 
 def format_grammar_results(matches):
