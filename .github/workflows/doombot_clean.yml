@@ -24,7 +24,7 @@ jobs:
 
       - name: Install Playwright Browsers
         run: |
-          python -m playwright install --with-deps
+          python -m playwright install chromium --with-deps
 
       - name: Run Doombot
         run: python main.py
