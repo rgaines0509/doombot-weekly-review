@@ -2,7 +2,7 @@ name: Doombot Weekly Site Check
 
 on:
   schedule:
-    - cron: '0 10 * * 1'  # 5am Central = 10am UTC every Monday
+    - cron: '0 10 * * 1'  # 5am Central
   workflow_dispatch:
 
 jobs:
@@ -22,12 +22,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Playwright Browsers
-        run: python -m playwright install
-
-      - name: Create Service Account Key File
-        run: echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}" > service_account_key.json
-
       - name: Run Doombot Weekly Site Check
         run: python main.py
 
@@ -36,6 +30,7 @@ jobs:
         with:
           name: weekly_report_backup
           path: weekly_report.md
+
 
 
 
