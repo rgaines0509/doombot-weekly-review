@@ -25,7 +25,6 @@ URLS_TO_CHECK = [
 
 tool = LanguageTool('en-US', remote_server='https://api.languagetool.org/v2/')
 
-
 def format_grammar_results(matches):
     if not matches:
         return "✅ No grammar or spelling issues found."
@@ -34,7 +33,6 @@ def format_grammar_results(matches):
         location = f"• Issue: {match.message}\n  Suggestion: {', '.join(match.replacements)}\n  Context: {match.context.text}\n"
         output.append(location)
     return "\n".join(output)
-
 
 def format_tech_issues(broken_links, bad_toggles):
     lines = []
@@ -53,7 +51,6 @@ def format_tech_issues(broken_links, bad_toggles):
             lines.append(f"• {toggle}")
 
     return "\n".join(lines)
-
 
 async def check_links_and_dropdowns(page):
     broken_links = []
@@ -84,7 +81,6 @@ async def check_links_and_dropdowns(page):
             bad_toggles.append("Error interacting with dropdown")
 
     return broken_links, bad_toggles
-
 
 async def run_check(urls):
     report_sections = []
