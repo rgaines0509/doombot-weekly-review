@@ -1,11 +1,10 @@
 import asyncio
 import os
+import json
 from datetime import datetime
 from doomsite_check import run_check
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-import requests
-import json
 
 URLS_TO_CHECK = [
     "https://quickbookstraining.com/",
@@ -27,8 +26,11 @@ URLS_TO_CHECK = [
 ]
 
 DOC_TITLE = "Doombot Weekly Website Review"
-SCOPES = ['https://www.googleapis.com/auth/documents', 'https://www.googleapis.com/auth/drive']
-GOOGLE_DOC_MIME = 'application/vnd.google-apps.document'
+SCOPES = [
+    "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/drive"
+]
+
 
 def get_service_account_credentials():
     service_account_info = os.environ['GOOGLE_SERVICE_ACCOUNT_KEY']
@@ -38,10 +40,11 @@ def get_service_account_credentials():
         scopes=SCOPES
     )
 
+
 def find_or_create_doc(service, title):
     drive_service = build('drive', 'v3', credentials=service._credentials)
     results = drive_service.files().list(
-        q=f"name='{title}' and mimeType='{GOOGLE_DOC_MIME}' and trashed = false",
+        q=f"name='{title}' and mimeType='application/vnd.google-apps.document' and trashed = false",
         spaces='drive',
         fields="files(id, name)"
     ).execute()
@@ -51,12 +54,11 @@ def find_or_create_doc(service, title):
         print(f"📄 Found existing doc: {items[0]['name']} (ID: {items[0]['id']})")
         return items[0]['id']
     else:
-        body = {'title': title}
-        doc = service.documents().create(body=body).execute()
+        doc = service.documents().create(body={'title': title}).execute()
         doc_id = doc.get('documentId')
         print(f"🆕 Created new doc: {doc.get('title')} (ID: {doc_id})")
 
-        # Share with Ron's email
+        # Share the doc with Ron
         drive_service.permissions().create(
             fileId=doc_id,
             body={
@@ -66,42 +68,53 @@ def find_or_create_doc(service, title):
             },
             fields='id'
         ).execute()
-        print(f"📬 Shared doc with rgaines@quickbookstraining.com")
+        print(f"📧 Shared doc with rgaines@quickbookstraining.com")
 
         return doc_id
 
+
 def write_report_to_google_doc(report, document_id, service):
-    body = {
-        'requests': [
-            {
-                'insertText': {
-                    'location': {'index': 1},
-                    'text': report
+    requests = [
+        {
+            'deleteContentRange': {
+                'range': {
+                    'startIndex': 1,
+                    'endIndex': 999999
                 }
             }
-        ]
-    }
-    service.documents().batchUpdate(documentId=document_id, body=body).execute()
+        },
+        {
+            'insertText': {
+                'location': {'index': 1},
+                'text': report
+            }
+        }
+    ]
+    service.documents().batchUpdate(documentId=document_id, body={"requests": requests}).execute()
+
+
+def format_report(sections):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    header = f"🧾 Doombot Weekly Website Review\nGenerated: {timestamp}\n\n"
+    return header + "\n".join(sections)
+
 
 async def main():
     print("🚀 Doombot Report Starting...")
     results = await run_check(URLS_TO_CHECK)
+    markdown = format_report(results)
 
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    full_report = f"Doombot Weekly Report - {timestamp}\n\n" + "\n".join(results)
-
-    # Write to local Markdown backup
-    with open("weekly_report.md", "w", encoding="utf-8") as f:
-        f.write(full_report)
-
-    # Write to Google Doc
+    print("📄 Connecting to Google Docs...")
     creds = get_service_account_credentials()
     docs_service = build('docs', 'v1', credentials=creds)
     doc_id = find_or_create_doc(docs_service, DOC_TITLE)
-    write_report_to_google_doc(full_report, doc_id, docs_service)
 
-    print("✅ Doombot report complete.")
-    print(f"📄 View it here: https://docs.google.com/document/d/{doc_id}/edit")
+    print("📝 Writing report to Google Doc...")
+    write_report_to_google_doc(markdown, doc_id, docs_service)
+
+    print("✅ Doombot Check Complete. View report:")
+    print(f"https://docs.google.com/document/d/{doc_id}/edit")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
