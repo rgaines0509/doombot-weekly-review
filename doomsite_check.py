@@ -23,7 +23,7 @@ URLS_TO_CHECK = [
     "https://quickbookstraining.com/learn-quickbooks"
 ]
 
-tool = LanguageTool('en-US', remote_server='https://api.languagetool.org/v2/')
+tool = LanguageTool('en-US')  # Use local server instead of remote API
 
 def format_grammar_results(matches):
     if not matches:
@@ -76,11 +76,11 @@ async def check_links_and_dropdowns(page):
             await asyncio.sleep(0.5)
             visible = await toggle.is_visible()
             if not visible:
-                bad_toggles.append("Dropdown didn't expand properly")
+                broken_toggles.append("Dropdown didn't expand properly")
         except Exception:
-            bad_toggles.append("Error interacting with dropdown")
+            broken_toggles.append("Error interacting with dropdown")
 
-    return broken_links, bad_toggles
+    return broken_links, broken_toggles
 
 async def run_check(urls):
     report_sections = []
