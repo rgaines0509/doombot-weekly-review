@@ -27,9 +27,9 @@ URLS_TO_CHECK = [
 ]
 
 DOC_TITLE = "Doombot Weekly Website Review"
-SCOPES = ['https://www.googleapis.com/auth/documents']
+SCOPES = ['https://www.googleapis.com/auth/documents', 'https://www.googleapis.com/auth/drive']
 GOOGLE_DOC_MIME = 'application/vnd.google-apps.document'
-
+SHARE_EMAIL = 'rgaines@quickbookstraining.com'
 
 def get_service_account_credentials():
     service_account_info = os.environ['GOOGLE_SERVICE_ACCOUNT_KEY']
@@ -38,7 +38,6 @@ def get_service_account_credentials():
         service_account_json,
         scopes=SCOPES
     )
-
 
 def find_or_create_doc(service, title):
     drive_service = build('drive', 'v3', credentials=service._credentials)
@@ -55,34 +54,40 @@ def find_or_create_doc(service, title):
     else:
         body = {'title': title}
         doc = service.documents().create(body=body).execute()
-        print(f"🆕 Created new doc: {doc.get('title')} (ID: {doc.get('documentId')})")
-        return doc.get('documentId')
+        doc_id = doc.get('documentId')
+        print(f"🆕 Created new doc: {doc.get('title')} (ID: {doc_id})")
 
+        # Share with user
+        drive_service.permissions().create(
+            fileId=doc_id,
+            body={
+                'type': 'user',
+                'role': 'writer',
+                'emailAddress': SHARE_EMAIL
+            },
+            fields='id'
+        ).execute()
+        print(f"👥 Shared doc with {SHARE_EMAIL}")
+        return doc_id
 
 def write_report_to_google_doc(report, document_id, service):
-    # Clear old content first
-    service.documents().batchUpdate(
-        documentId=document_id,
-        body={'requests': [{'deleteContentRange': {'range': {'startIndex': 1}}}]}
-    ).execute()
-
-    # Insert new content
     body = {
-        'requests': [{
-            'insertText': {
-                'location': {'index': 1},
-                'text': report
+        'requests': [
+            {
+                'insertText': {
+                    'location': {'index': 1},
+                    'text': report
+                }
             }
-        }]
+        ]
     }
     service.documents().batchUpdate(documentId=document_id, body=body).execute()
-
 
 def send_report_to_slack(doc_id):
     webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
     doc_link = f"https://docs.google.com/document/d/{doc_id}/edit"
     slack_message = {
-        "text": f"📝 *Doombot Weekly Website Review is complete!*\n{doc_link}"
+        "text": f"📝 Doombot Weekly Website Review is complete!\n{doc_link}"
     }
     response = requests.post(webhook_url, json=slack_message)
     if response.status_code != 200:
@@ -90,28 +95,25 @@ def send_report_to_slack(doc_id):
     else:
         print("📤 Sent report to Slack!")
 
-
 async def main():
-    print("🚀 Doombot Weekly Website Review starting...")
+    print("🚀 Doombot Report Starting...")
     results = await run_check(URLS_TO_CHECK)
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    full_report = f"**Doombot Weekly Report**\n*Generated: {timestamp}*\n\n"
-    full_report += "\n---\n".join(results)
+    full_report = f"Doombot Weekly Report - {timestamp}\n\n"
+    for result in results:
+        full_report += result + "\n\n"
 
-    print("🔐 Authenticating with Google Docs...")
+    print("📝 Connecting to Google Docs API...")
     creds = get_service_account_credentials()
     docs_service = build('docs', 'v1', credentials=creds)
     doc_id = find_or_create_doc(docs_service, DOC_TITLE)
 
-    print("📝 Writing to Google Doc...")
+    print("📊 Writing report to Google Doc...")
     write_report_to_google_doc(full_report, doc_id, docs_service)
 
-    print("📣 Sending to Slack...")
-    send_report_to_slack(doc_id)
-
-    print("✅ Doombot report complete.")
-
+    print("✅ Doombot report complete. View it here:")
+    print(f"https://docs.google.com/document/d/{doc_id}/edit")
 
 if __name__ == "__main__":
     asyncio.run(main())
