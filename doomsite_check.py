@@ -29,9 +29,8 @@ tool = LanguageTool('en-US')
 def format_grammar_results(matches):
     if not matches:
         return "✅ No grammar or spelling issues found."
-    output = ["❌ Grammar/Spelling Issues Found:"]
+    output = ["📝 **Grammar/Spelling Issues Found:**"]
     for match in matches:
-        context = match.context.offset
         location = f"• Issue: {match.message}\n  Suggestion: {', '.join(match.replacements)}\n  Context: {match.context.text}\n"
         output.append(location)
     return "\n".join(output)
@@ -42,14 +41,14 @@ def format_tech_issues(broken_links, bad_toggles):
     if not broken_links:
         lines.append("✅ No broken links found.")
     else:
-        lines.append("❌ Broken Links:")
+        lines.append("🚨 **Broken Links Found:**")
         for link in broken_links:
             lines.append(f"• {link}")
 
     if not bad_toggles:
         lines.append("✅ No broken dropdowns found.")
     else:
-        lines.append("❌ Broken Dropdowns:")
+        lines.append("🚨 **Broken Dropdowns Found:**")
         for toggle in bad_toggles:
             lines.append(f"• {toggle}")
 
@@ -107,19 +106,19 @@ async def run_check(urls):
 
                 broken_links, bad_toggles = await check_links_and_dropdowns(page)
 
-                report_sections.append(f"=== {url} ===\n")
-                report_sections.append("\n**Grammar Check:**\n")
+                report_sections.append(f"🔗 **URL:** {url}\n")
                 report_sections.append(format_grammar_results(matches))
-                report_sections.append("\n**Technical Check:**\n")
-                report_sections.append(format_tech_issues(broken_links, bad_toggles))
                 report_sections.append("\n")
+                report_sections.append(format_tech_issues(broken_links, bad_toggles))
+                report_sections.append("\n---\n")
 
             except Exception as e:
-                report_sections.append(f"❌ Failed to check {url}: {e}\n")
+                report_sections.append(f"❌ Failed to check {url}: {e}\n---\n")
 
         await browser.close()
 
     return report_sections
+
 
 
 
