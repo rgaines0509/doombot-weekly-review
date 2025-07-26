@@ -2,7 +2,11 @@ import asyncio
 from datetime import datetime
 from doomsite_check import run_check
 
-URLS_TO_CHECK = [
+# ⏱️ Change this to test fewer pages faster
+URL_LIMIT = 5
+
+# 🔗 Full site URL list — edit only if you add new pages
+ALL_URLS = [
     "https://quickbookstraining.com/",
     "https://quickbookstraining.com/live-quickbooks-help",
     "https://quickbookstraining.com/quickbooks-courses",
@@ -21,6 +25,9 @@ URLS_TO_CHECK = [
     "https://quickbookstraining.com/learn-quickbooks"
 ]
 
+# 🎯 Throttle number of URLs for speed
+URLS_TO_CHECK = ALL_URLS[:URL_LIMIT]
+
 def safe_print(text):
     try:
         print(text)
@@ -34,6 +41,7 @@ def format_report(sections):
 
 async def main():
     safe_print("🚀 Doombot Report Starting...")
+    safe_print(f"🔗 Checking {len(URLS_TO_CHECK)} pages...")
 
     try:
         results = await asyncio.wait_for(run_check(URLS_TO_CHECK), timeout=300)
@@ -56,6 +64,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
