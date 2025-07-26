@@ -8,6 +8,12 @@ from language_tool_python import LanguageTool
 
 ENABLE_GRAMMAR_CHECK = True
 
+# Pages to skip grammar checking for — legal/policy/etc.
+SKIP_GRAMMAR_FOR = [
+    "privacy-policy",
+    "terms-and-conditions"
+]
+
 async def check_links(page, url):
     broken_links = []
     try:
@@ -47,7 +53,7 @@ def grammar_check(text, url):
     try:
         lang = detect(text)
         tool = LanguageTool(lang)
-        matches = tool.check(text[:20000])  # Limit to 20K chars
+        matches = tool.check(text[:20000])  # Limit grammar check to 20k chars
         print(f"✅ Grammar check complete on: {url} — {len(matches)} issues")
         issues = []
         for match in matches:
@@ -68,17 +74,24 @@ async def run_check(urls):
 
         for url in urls:
             print(f"\n➡️ Processing: {url}")
-            start_time = time.time()
+            total_start = time.time()
             section = [f"🔗 URL: {url}"]
 
+            # 🕒 Link check
+            link_start = time.time()
             try:
                 link_issues = await check_links(page, url)
                 section.append("🔗 Link Check Results:")
                 section.extend(link_issues if link_issues else ["✅ No broken links found."])
             except Exception as e:
                 section.append(f"❌ Link check failed: {e}")
+            link_duration = round(time.time() - link_start, 2)
+            section.append(f"⏱️ Link check time: {link_duration}s")
 
-            if ENABLE_GRAMMAR_CHECK:
+            # 🧠 Grammar check
+            grammar_duration = 0
+            if ENABLE_GRAMMAR_CHECK and not any(skip in url for skip in SKIP_GRAMMAR_FOR):
+                grammar_start = time.time()
                 try:
                     await page.goto(url, timeout=15000)
                     await page.wait_for_load_state('networkidle', timeout=10000)
@@ -89,10 +102,17 @@ async def run_check(urls):
                     section.extend(grammar_issues if grammar_issues else ["✅ No grammar issues found."])
                 except Exception as e:
                     section.append(f"⚠️ Grammar check failed for {url}: {e}")
+                grammar_duration = round(time.time() - grammar_start, 2)
+                section.append(f"⏱️ Grammar check time: {grammar_duration}s")
+            elif not ENABLE_GRAMMAR_CHECK:
+                section.append("📝 Grammar/Spelling Issues: [Disabled]")
+            else:
+                section.append("📝 Grammar/Spelling Issues: [Skipped for this page]")
 
-            duration = round(time.time() - start_time, 2)
-            print(f"✅ Finished: {url} in {duration} seconds")
-            section.append(f"⏱️ Time to process: {duration} seconds")
+            # 🧾 Finalize
+            total_duration = round(time.time() - total_start, 2)
+            print(f"✅ Finished: {url} in {total_duration}s")
+            section.append(f"⏱️ Total processing time: {total_duration}s")
 
             results.append("\n".join(section))
 
@@ -100,6 +120,7 @@ async def run_check(urls):
         print("🏁 All pages checked.")
 
     return results
+
 
 
 
