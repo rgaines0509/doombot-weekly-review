@@ -45,7 +45,7 @@ def grammar_check(text):
     try:
         lang = detect(text)
         tool = LanguageTool(lang)
-        matches = tool.check(text[:20000])  # Limit to first 20K characters
+        matches = tool.check(text[:20000])  # Limit to 20K characters
         issues = []
         for match in matches:
             issue = f"• Line {match.context_offset}: {match.message} — Suggestion: {', '.join(match.replacements)}"
@@ -91,6 +91,7 @@ async def run_check(urls):
         print("🏁 All pages checked.")
 
     return results
+
 
 
 
