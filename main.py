@@ -1,12 +1,12 @@
 import asyncio
+import os
+import json
 from datetime import datetime
 from doomsite_check import run_check
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
-# ⏱️ Change this to test fewer pages faster
-URL_LIMIT = 2
-
-# 🔗 Full site URL list — edit only if you add new pages
-ALL_URLS = [
+URLS_TO_CHECK = [
     "https://quickbookstraining.com/",
     "https://quickbookstraining.com/live-quickbooks-help",
     "https://quickbookstraining.com/quickbooks-courses",
@@ -25,14 +25,68 @@ ALL_URLS = [
     "https://quickbookstraining.com/learn-quickbooks"
 ]
 
-# 🎯 Throttle number of URLs for speed
-URLS_TO_CHECK = ALL_URLS[:URL_LIMIT]
+DOC_TITLE = "Doombot Weekly Website Review"
+SCOPES = [
+    "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/drive"
+]
 
-def safe_print(text):
-    try:
-        print(text)
-    except UnicodeEncodeError:
-        print(text.encode("utf-8", "replace").decode("utf-8"))
+def get_service_account_credentials():
+    service_account_info = os.environ['GOOGLE_SERVICE_ACCOUNT_KEY']
+    service_account_json = json.loads(service_account_info)
+    return service_account.Credentials.from_service_account_info(
+        service_account_json,
+        scopes=SCOPES
+    )
+
+def find_or_create_doc(service, title):
+    drive_service = build('drive', 'v3', credentials=service._credentials)
+    results = drive_service.files().list(
+        q=f"name='{title}' and mimeType='application/vnd.google-apps.document' and trashed = false",
+        spaces='drive',
+        fields="files(id, name)"
+    ).execute()
+    items = results.get('files', [])
+
+    if items:
+        print(f"📄 Found existing doc: {items[0]['name']} (ID: {items[0]['id']})")
+        return items[0]['id']
+    else:
+        doc = service.documents().create(body={'title': title}).execute()
+        doc_id = doc.get('documentId')
+        print(f"🆕 Created new doc: {doc.get('title')} (ID: {doc_id})")
+
+        drive_service.permissions().create(
+            fileId=doc_id,
+            body={
+                'type': 'user',
+                'role': 'writer',
+                'emailAddress': 'rgaines@quickbookstraining.com'
+            },
+            fields='id'
+        ).execute()
+        print(f"📧 Shared doc with rgaines@quickbookstraining.com")
+
+        return doc_id
+
+def write_report_to_google_doc(report, document_id, service):
+    requests = [
+        {
+            'deleteContentRange': {
+                'range': {
+                    'startIndex': 1,
+                    'endIndex': 999999
+                }
+            }
+        },
+        {
+            'insertText': {
+                'location': {'index': 1},
+                'text': report
+            }
+        }
+    ]
+    service.documents().batchUpdate(documentId=document_id, body={"requests": requests}).execute()
 
 def format_report(sections):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -40,30 +94,19 @@ def format_report(sections):
     return header + "\n".join(sections)
 
 async def main():
-    safe_print("🚀 Doombot Report Starting...")
-    safe_print(f"🔗 Checking {len(URLS_TO_CHECK)} pages...")
-
-    try:
-        results = await asyncio.wait_for(run_check(URLS_TO_CHECK), timeout=300)
-    except asyncio.TimeoutError:
-        safe_print("❌ Timeout: Website check took longer than 5 minutes.")
-        results = ["⚠️ ERROR: The website check timed out after 5 minutes."]
-    except Exception as e:
-        safe_print(f"❌ UNEXPECTED ERROR during run_check: {e}")
-        results = [f"⚠️ Fatal error while running checks: {e}"]
-
+    print("🚀 Doombot Report Starting...")
+    results = await run_check(URLS_TO_CHECK)
     markdown = format_report(results)
 
-    try:
-        safe_print("💾 Generating weekly_report.md...")
-        with open("weekly_report.md", "w", encoding="utf-8", errors="ignore") as f:
-            f.write(markdown)
-        safe_print("✅ Report saved successfully.")
-    except Exception as e:
-        safe_print(f"❌ FAILED to save weekly_report.md: {e}")
+    # Save locally for GitHub Actions artifact
+    with open("weekly_report.md", "w", encoding="utf-8", errors="ignore") as f:
+        f.write(markdown)
+
+    print("💾 Report saved successfully.")
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
