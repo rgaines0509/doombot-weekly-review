@@ -31,6 +31,12 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive"
 ]
 
+def safe_print(text):
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(text.encode("utf-8", "replace").decode("utf-8"))
+
 def get_service_account_credentials():
     service_account_info = os.environ['GOOGLE_SERVICE_ACCOUNT_KEY']
     service_account_json = json.loads(service_account_info)
@@ -46,75 +52,8 @@ def find_or_create_doc(service, title):
         spaces='drive',
         fields="files(id, name)"
     ).execute()
-    items = results.get('files', [])
+    items =
 
-    if items:
-        print(f"📄 Found existing doc: {items[0]['name']} (ID: {items[0]['id']})")
-        return items[0]['id']
-    else:
-        doc = service.documents().create(body={'title': title}).execute()
-        doc_id = doc.get('documentId')
-        print(f"🆕 Created new doc: {doc.get('title')} (ID: {doc_id})")
-
-        drive_service.permissions().create(
-            fileId=doc_id,
-            body={
-                'type': 'user',
-                'role': 'writer',
-                'emailAddress': 'rgaines@quickbookstraining.com'
-            },
-            fields='id'
-        ).execute()
-        print(f"📧 Shared doc with rgaines@quickbookstraining.com")
-
-        return doc_id
-
-def write_report_to_google_doc(report, document_id, service):
-    requests = [
-        {
-            'deleteContentRange': {
-                'range': {
-                    'startIndex': 1,
-                    'endIndex': 999999
-                }
-            }
-        },
-        {
-            'insertText': {
-                'location': {'index': 1},
-                'text': report
-            }
-        }
-    ]
-    service.documents().batchUpdate(documentId=document_id, body={"requests": requests}).execute()
-
-def format_report(sections):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    header = f"🧾 Doombot Weekly Website Review\nGenerated: {timestamp}\n\n"
-    return header + "\n".join(sections)
-
-async def main():
-    print("🚀 Doombot Report Starting...")
-    results = await run_check(URLS_TO_CHECK)
-    markdown = format_report(results)
-
-    # Save locally for GitHub Actions artifact
-    with open("weekly_report.md", "w", encoding="utf-8", errors="ignore") as f:
-        f.write(markdown)
-
-    print("📄 Connecting to Google Docs...")
-    creds = get_service_account_credentials()
-    docs_service = build('docs', 'v1', credentials=creds)
-    doc_id = find_or_create_doc(docs_service, DOC_TITLE)
-
-    print("📝 Writing report to Google Doc...")
-    write_report_to_google_doc(markdown, doc_id, docs_service)
-
-    print("✅ Doombot Check Complete. View report:")
-    print(f"https://docs.google.com/document/d/{doc_id}/edit")
-
-if __name__ == "__main__":
-    asyncio.run(main())
 
 
 
