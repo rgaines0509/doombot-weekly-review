@@ -32,7 +32,75 @@ async def check_links(page, url):
             except Exception as e:
                 broken_links.append(f"{href} → ERROR: {e}")
     except Exception as e:
-        broken_links.append(f"{url} (page l_
+        broken_links.append(f"{url} (page load error): {e}")
+    print(f"✅ Link check done: {url} — {len(broken_links)} broken links")
+    return broken_links
+
+def clean_html_text(html):
+    soup = BeautifulSoup(html, 'html.parser')
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    return soup.get_text(separator=" ", strip=True)
+
+def grammar_check(text, url):
+    print(f"🧠 Running grammar check on: {url}")
+    try:
+        lang = detect(text)
+        tool = LanguageTool(lang)
+        matches = tool.check(text[:20000])  # Limit to 20K chars
+        print(f"✅ Grammar check complete on: {url} — {len(matches)} issues")
+        issues = []
+        for match in matches:
+            issue = f"• Line {match.context_offset}: {match.message} — Suggestion: {', '.join(match.replacements)}"
+            issues.append(issue)
+        return issues
+    except Exception as e:
+        print(f"❌ Grammar check failed on {url}: {e}")
+        return [f"⚠️ Grammar check failed: {e}"]
+
+async def run_check(urls):
+    print("🔥 Starting full site check...")
+    results = []
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+
+        for url in urls:
+            print(f"\n➡️ Processing: {url}")
+            start_time = time.time()
+            section = [f"🔗 URL: {url}"]
+
+            try:
+                link_issues = await check_links(page, url)
+                section.append("🔗 Link Check Results:")
+                section.extend(link_issues if link_issues else ["✅ No broken links found."])
+            except Exception as e:
+                section.append(f"❌ Link check failed: {e}")
+
+            if ENABLE_GRAMMAR_CHECK:
+                try:
+                    await page.goto(url, timeout=15000)
+                    await page.wait_for_load_state('networkidle', timeout=10000)
+                    html = await page.content()
+                    text = clean_html_text(html)
+                    grammar_issues = grammar_check(text, url)
+                    section.append("📝 Grammar/Spelling Issues:")
+                    section.extend(grammar_issues if grammar_issues else ["✅ No grammar issues found."])
+                except Exception as e:
+                    section.append(f"⚠️ Grammar check failed for {url}: {e}")
+
+            duration = round(time.time() - start_time, 2)
+            print(f"✅ Finished: {url} in {duration} seconds")
+            section.append(f"⏱️ Time to process: {duration} seconds")
+
+            results.append("\n".join(section))
+
+        await browser.close()
+        print("🏁 All pages checked.")
+
+    return results
+
 
 
 
