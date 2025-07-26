@@ -8,7 +8,6 @@ from language_tool_python import LanguageTool
 
 ENABLE_GRAMMAR_CHECK = True
 
-# Pages to skip grammar checking for — legal/policy/etc.
 SKIP_GRAMMAR_FOR = [
     "privacy-policy",
     "terms-and-conditions"
@@ -41,6 +40,41 @@ async def check_links(page, url):
         broken_links.append(f"{url} (page load error): {e}")
     print(f"✅ Link check done: {url} — {len(broken_links)} broken links")
     return broken_links
+
+async def check_tech_elements(page, url):
+    print(f"🛠️ Running tech check on: {url}")
+    issues = []
+
+    try:
+        await page.goto(url, timeout=15000)
+        await page.wait_for_load_state('networkidle', timeout=10000)
+
+        # Check dropdowns
+        dropdowns = await page.query_selector_all(".dropdown")
+        if dropdowns:
+            for i, dd in enumerate(dropdowns):
+                try:
+                    await dd.hover()
+                    await dd.click()
+                except Exception:
+                    issues.append(f"Dropdown #{i+1} not clickable")
+        else:
+            issues.append("No .dropdown elements found")
+
+        # Check buttons
+        buttons = await page.query_selector_all("button")
+        if not buttons:
+            issues.append("No buttons found on page")
+
+        # Check nav
+        nav = await page.query_selector(".nav")
+        if not nav:
+            issues.append("Navigation menu (.nav) not found")
+
+    except Exception as e:
+        issues.append(f"⚠️ Page load or JS error: {e}")
+
+    return issues if issues else ["✅ All key UI elements passed"]
 
 def clean_html_text(html):
     soup = BeautifulSoup(html, 'html.parser')
@@ -88,6 +122,17 @@ async def run_check(urls):
             link_duration = round(time.time() - link_start, 2)
             section.append(f"⏱️ Link check time: {link_duration}s")
 
+            # 🛠️ Tech check
+            tech_start = time.time()
+            try:
+                tech_issues = await check_tech_elements(page, url)
+                section.append("🛠️ Technical Check Results:")
+                section.extend(tech_issues)
+            except Exception as e:
+                section.append(f"⚠️ Technical check failed: {e}")
+            tech_duration = round(time.time() - tech_start, 2)
+            section.append(f"⏱️ Tech check time: {tech_duration}s")
+
             # 🧠 Grammar check
             grammar_duration = 0
             if ENABLE_GRAMMAR_CHECK and not any(skip in url for skip in SKIP_GRAMMAR_FOR):
@@ -109,7 +154,6 @@ async def run_check(urls):
             else:
                 section.append("📝 Grammar/Spelling Issues: [Skipped for this page]")
 
-            # 🧾 Finalize
             total_duration = round(time.time() - total_start, 2)
             print(f"✅ Finished: {url} in {total_duration}s")
             section.append(f"⏱️ Total processing time: {total_duration}s")
@@ -120,6 +164,7 @@ async def run_check(urls):
         print("🏁 All pages checked.")
 
     return results
+
 
 
 
