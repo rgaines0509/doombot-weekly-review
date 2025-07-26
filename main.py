@@ -3,7 +3,7 @@ from datetime import datetime
 from doomsite_check import run_check
 
 # ⏱️ Change this to test fewer pages faster
-URL_LIMIT = 5
+URL_LIMIT = 2
 
 # 🔗 Full site URL list — edit only if you add new pages
 ALL_URLS = [
