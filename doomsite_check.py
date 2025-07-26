@@ -131,6 +131,46 @@ async def run_check(urls):
             print("🧪 [Step] Starting TECH CHECK")
             try:
                 tech_issues = await check_tech_elements(page, url)
+                section.append("🛠️ Technical Check Results:")
+                section.extend(tech_issues)
+            except Exception as e:
+                section.append(f"⚠️ Technical check failed: {e}")
+            tech_duration = round(time.time() - tech_start, 2)
+            section.append(f"⏱️ Tech check time: {tech_duration}s")
+
+            # 🧠 Grammar check
+            grammar_duration = 0
+            if ENABLE_GRAMMAR_CHECK and not any(skip in url for skip in SKIP_GRAMMAR_FOR):
+                grammar_start = time.time()
+                print("🧪 [Step] Starting GRAMMAR CHECK")
+                try:
+                    await page.goto(url, timeout=15000)
+                    await page.wait_for_load_state('networkidle', timeout=10000)
+                    html = await page.content()
+                    text = clean_html_text(html)
+                    grammar_issues = grammar_check(text, url)
+                    section.append("📝 Grammar/Spelling Issues:")
+                    section.extend(grammar_issues if grammar_issues else ["✅ No grammar issues found."])
+                except Exception as e:
+                    section.append(f"⚠️ Grammar check failed for {url}: {e}")
+                grammar_duration = round(time.time() - grammar_start, 2)
+                section.append(f"⏱️ Grammar check time: {grammar_duration}s")
+            elif not ENABLE_GRAMMAR_CHECK:
+                section.append("📝 Grammar/Spelling Issues: [Disabled]")
+            else:
+                section.append("📝 Grammar/Spelling Issues: [Skipped for this page]")
+
+            total_duration = round(time.time() - total_start, 2)
+            print(f"✅ Finished: {url} in {total_duration}s")
+            section.append(f"⏱️ Total processing time: {total_duration}s")
+
+            results.append("\n".join(section))
+
+        await browser.close()
+        print("🏁 All pages checked.")
+
+    return results
+
 
 
 
