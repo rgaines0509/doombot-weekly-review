@@ -38,8 +38,7 @@ async def main():
     try:
         results = await asyncio.wait_for(run_check(URLS_TO_CHECK), timeout=300)
     except asyncio.TimeoutError:
-        safe_print("❌ Timeout: Website check took longer than 5 minutes.")
-        results = ["⚠️ ERROR: The website chec]()
+        safe_pr_
 
 
 
