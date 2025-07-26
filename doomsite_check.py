@@ -3,7 +3,7 @@ import time
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 import httpx
-from languagetool_python import LanguageTool
+from language_tool_python import LanguageTool  # Corrected import
 
 tool = LanguageTool('en-US')
 
@@ -52,7 +52,8 @@ async def run_all_checks(url, page):
 
     try:
         await page.goto(url, timeout=60000)
-        await page.wait_for_load_state('networkidle')
+        await page.wait_for_load_state('domcontentloaded')
+        await page.wait_for_timeout(2000)  # short buffer after DOM is loaded
 
         # TECH CHECK
         print(f"🛠️ Starting tech check for {url}")
@@ -88,7 +89,13 @@ async def run_all_checks(url, page):
             start = time.time()
             html = await fetch_page_html(page)
             soup = BeautifulSoup(html, 'html.parser')
+
+            # Remove script/style tags
+            for tag in soup(['script', 'style']):
+                tag.decompose()
+
             visible_text = soup.get_text(separator=' ', strip=True)
+            visible_text = visible_text[:15000]  # Limit grammar input size
 
             grammar_issues = await asyncio.get_event_loop().run_in_executor(
                 None, grammar_check, visible_text
@@ -113,8 +120,8 @@ async def run_check(urls):
     print("🎯 Starting full site check...")
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
         for url in urls:
+            page = await browser.new_page()
             print(f"🔍 Checking: {url}")
             try:
                 result = await run_all_checks(url, page)
@@ -122,8 +129,11 @@ async def run_check(urls):
                 print(f"🔥 Error checking {url}: {e}")
                 result = f"❌ Error on {url}: {e}"
             all_results.append(result + "\n" + "-"*50)
+            await page.close()
         await browser.close()
     return all_results
+
+
 
 
 
