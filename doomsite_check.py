@@ -46,10 +46,11 @@ async def check_tech_elements(page, url):
     issues = []
 
     try:
+        print("🧪 [Tech] Visiting page...")
         await page.goto(url, timeout=15000)
         await page.wait_for_load_state('networkidle', timeout=10000)
 
-        # Check dropdowns
+        print("🧪 [Tech] DOM loaded — checking dropdowns")
         dropdowns = await page.query_selector_all(".dropdown")
         if dropdowns:
             for i, dd in enumerate(dropdowns):
@@ -61,12 +62,12 @@ async def check_tech_elements(page, url):
         else:
             issues.append("No .dropdown elements found")
 
-        # Check buttons
+        print("🧪 [Tech] Checking buttons...")
         buttons = await page.query_selector_all("button")
         if not buttons:
             issues.append("No buttons found on page")
 
-        # Check nav
+        print("🧪 [Tech] Checking nav...")
         nav = await page.query_selector(".nav")
         if not nav:
             issues.append("Navigation menu (.nav) not found")
@@ -74,6 +75,7 @@ async def check_tech_elements(page, url):
     except Exception as e:
         issues.append(f"⚠️ Page load or JS error: {e}")
 
+    print("✅ Tech check complete.")
     return issues if issues else ["✅ All key UI elements passed"]
 
 def clean_html_text(html):
@@ -86,7 +88,9 @@ def grammar_check(text, url):
     print(f"🧠 Running grammar check on: {url}")
     try:
         lang = detect(text)
+        print(f"🧪 [Grammar] Detected language: {lang}")
         tool = LanguageTool(lang)
+        print("🧪 [Grammar] Starting grammar analysis...")
         matches = tool.check(text[:20000])  # Limit grammar check to 20k chars
         print(f"✅ Grammar check complete on: {url} — {len(matches)} issues")
         issues = []
@@ -124,46 +128,10 @@ async def run_check(urls):
 
             # 🛠️ Tech check
             tech_start = time.time()
+            print("🧪 [Step] Starting TECH CHECK")
             try:
                 tech_issues = await check_tech_elements(page, url)
-                section.append("🛠️ Technical Check Results:")
-                section.extend(tech_issues)
-            except Exception as e:
-                section.append(f"⚠️ Technical check failed: {e}")
-            tech_duration = round(time.time() - tech_start, 2)
-            section.append(f"⏱️ Tech check time: {tech_duration}s")
 
-            # 🧠 Grammar check
-            grammar_duration = 0
-            if ENABLE_GRAMMAR_CHECK and not any(skip in url for skip in SKIP_GRAMMAR_FOR):
-                grammar_start = time.time()
-                try:
-                    await page.goto(url, timeout=15000)
-                    await page.wait_for_load_state('networkidle', timeout=10000)
-                    html = await page.content()
-                    text = clean_html_text(html)
-                    grammar_issues = grammar_check(text, url)
-                    section.append("📝 Grammar/Spelling Issues:")
-                    section.extend(grammar_issues if grammar_issues else ["✅ No grammar issues found."])
-                except Exception as e:
-                    section.append(f"⚠️ Grammar check failed for {url}: {e}")
-                grammar_duration = round(time.time() - grammar_start, 2)
-                section.append(f"⏱️ Grammar check time: {grammar_duration}s")
-            elif not ENABLE_GRAMMAR_CHECK:
-                section.append("📝 Grammar/Spelling Issues: [Disabled]")
-            else:
-                section.append("📝 Grammar/Spelling Issues: [Skipped for this page]")
-
-            total_duration = round(time.time() - total_start, 2)
-            print(f"✅ Finished: {url} in {total_duration}s")
-            section.append(f"⏱️ Total processing time: {total_duration}s")
-
-            results.append("\n".join(section))
-
-        await browser.close()
-        print("🏁 All pages checked.")
-
-    return results
 
 
 
