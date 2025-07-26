@@ -1,8 +1,8 @@
 import asyncio
+import time
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 import httpx
-
 from languagetool_python import LanguageTool
 
 tool = LanguageTool('en-US')
@@ -54,32 +54,55 @@ async def run_all_checks(url, page):
         await page.goto(url, timeout=60000)
         await page.wait_for_load_state('networkidle')
 
-        # Tech check
-        print(f"🛠️ Tech check for {url}")
-        tech_results = await check_tech_elements(page)
-        if tech_results:
-            results.append("🛠️ Technical Check Results:\n" + "\n".join(tech_results))
-        else:
-            results.append("✅ No tech issues found.")
+        # TECH CHECK
+        print(f"🛠️ Starting tech check for {url}")
+        try:
+            start = time.time()
+            tech_results = await asyncio.wait_for(check_tech_elements(page), timeout=60)
+            print(f"✅ Tech check completed in {time.time() - start:.2f}s")
+            if tech_results:
+                results.append("🛠️ Technical Check Results:\n" + "\n".join(tech_results))
+            else:
+                results.append("✅ No tech issues found.")
+        except asyncio.TimeoutError:
+            print("❌ Tech check timed out.")
+            results.append("❌ Tech check timed out.")
 
-        # Link check
-        print(f"🔗 Link check for {url}")
-        link_results = await check_links(page, url)
-        if link_results:
-            results.append("🔗 Link Check Results:\n" + "\n".join(link_results))
-        else:
-            results.append("✅ All links are reachable.")
+        # LINK CHECK
+        print(f"🔗 Starting link check for {url}")
+        try:
+            start = time.time()
+            link_results = await asyncio.wait_for(check_links(page, url), timeout=60)
+            print(f"✅ Link check completed in {time.time() - start:.2f}s")
+            if link_results:
+                results.append("🔗 Link Check Results:\n" + "\n".join(link_results))
+            else:
+                results.append("✅ All links are reachable.")
+        except asyncio.TimeoutError:
+            print("❌ Link check timed out.")
+            results.append("❌ Link check timed out.")
 
-        # Grammar check
-        print(f"🧠 Grammar check for {url}")
-        html = await fetch_page_html(page)
-        soup = BeautifulSoup(html, 'html.parser')
-        visible_text = soup.get_text(separator=' ', strip=True)
-        grammar_issues = grammar_check(visible_text)
-        if grammar_issues:
-            results.append("📝 Grammar/Spelling Issues:\n" + "\n".join(grammar_issues))
-        else:
-            results.append("✅ No grammar issues found.")
+        # GRAMMAR CHECK
+        print(f"🧠 Starting grammar check for {url}")
+        try:
+            start = time.time()
+            html = await fetch_page_html(page)
+            soup = BeautifulSoup(html, 'html.parser')
+            visible_text = soup.get_text(separator=' ', strip=True)
+
+            grammar_issues = await asyncio.get_event_loop().run_in_executor(
+                None, grammar_check, visible_text
+            )
+
+            print(f"✅ Grammar check completed in {time.time() - start:.2f}s")
+            if grammar_issues:
+                results.append("📝 Grammar/Spelling Issues:\n" + "\n".join(grammar_issues))
+            else:
+                results.append("✅ No grammar issues found.")
+        except asyncio.TimeoutError:
+            print("❌ Grammar check timed out.")
+            results.append("❌ Grammar check timed out.")
+
     except Exception as e:
         results.append(f"❌ Error loading or checking page: {e}")
 
@@ -101,6 +124,7 @@ async def run_check(urls):
             all_results.append(result + "\n" + "-"*50)
         await browser.close()
     return all_results
+
 
 
 
