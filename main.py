@@ -38,7 +38,25 @@ async def main():
     try:
         results = await asyncio.wait_for(run_check(URLS_TO_CHECK), timeout=300)
     except asyncio.TimeoutError:
-        safe_pr_
+        safe_print("❌ Timeout: Website check took longer than 5 minutes.")
+        results = ["⚠️ ERROR: The website check timed out after 5 minutes."]
+    except Exception as e:
+        safe_print(f"❌ UNEXPECTED ERROR during run_check: {e}")
+        results = [f"⚠️ Fatal error while running checks: {e}"]
+
+    markdown = format_report(results)
+
+    try:
+        safe_print("💾 Generating weekly_report.md...")
+        with open("weekly_report.md", "w", encoding="utf-8", errors="ignore") as f:
+            f.write(markdown)
+        safe_print("✅ Report saved successfully.")
+    except Exception as e:
+        safe_print(f"❌ FAILED to save weekly_report.md: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
 
 
 
