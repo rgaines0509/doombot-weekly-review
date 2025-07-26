@@ -101,7 +101,12 @@ def format_report(sections):
 async def main():
     safe_print("🚀 Doombot Report Starting...")
 
-    results = await run_check(URLS_TO_CHECK)
+    try:
+        results = await asyncio.wait_for(run_check(URLS_TO_CHECK), timeout=300)
+    except asyncio.TimeoutError:
+        safe_print("❌ Timeout: Website check took longer than 5 minutes.")
+        results = ["⚠️ ERROR: The website check timed out after 5 minutes."]
+
     markdown = format_report(results)
 
     # Save locally for GitHub Actions artifact
@@ -121,6 +126,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
