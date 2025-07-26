@@ -3,7 +3,7 @@ import time
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 import httpx
-from language_tool_python import LanguageTool  # Corrected import
+from language_tool_python import LanguageTool  # ✅ Correct import
 
 tool = LanguageTool('en-US')
 
@@ -95,7 +95,7 @@ async def run_all_checks(url, page):
                 tag.decompose()
 
             visible_text = soup.get_text(separator=' ', strip=True)
-            visible_text = visible_text[:15000]  # Limit grammar input size
+            visible_text = visible_text[:15000]  # Cap grammar input length
 
             grammar_issues = await asyncio.get_event_loop().run_in_executor(
                 None, grammar_check, visible_text
@@ -132,6 +132,7 @@ async def run_check(urls):
             await page.close()
         await browser.close()
     return all_results
+
 
 
 
