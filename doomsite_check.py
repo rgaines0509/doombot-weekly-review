@@ -4,9 +4,7 @@ from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 from langdetect import detect
 from language_tool_python import LanguageTool
-import re
 
-# Grammar checking remains ON
 ENABLE_GRAMMAR_CHECK = True
 
 async def check_links(page, url):
@@ -25,41 +23,39 @@ async def check_links(page, url):
             if href.startswith("mailto:") or href.startswith("tel:"):
                 continue
             try:
+                full_url = href if href.startswith("http") else url.rstrip("/") + "/" + href.lstrip("/")
                 async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
-                    r = await client.get(href if href.startswith("http") else url.rstrip("/") + "/" + href.lstrip("/"))
+                    r = await client.get(full_url)
                     if r.status_code >= 400:
-                        broken_links.append(f"{href} -> Status {r.status_code}")
+                        broken_links.append(f"{full_url} → Status {r.status_code}")
             except Exception as e:
-                broken_links.append(f"{href} -> ERROR: {str(e)}")
+                broken_links.append(f"{href} → ERROR: {e}")
     except Exception as e:
-        broken_links.append(f"{url} (page load error): {str(e)}")
+        broken_links.append(f"{url} (page load error): {e}")
     return broken_links
 
 def clean_html_text(html):
     soup = BeautifulSoup(html, 'html.parser')
-    for script in soup(["script", "style", "noscript"]):
-        script.extract()
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
     return soup.get_text(separator=" ", strip=True)
 
 def grammar_check(text):
-    print("🧠 Starting grammar check...")
+    print("🧠 Running grammar check...")
     try:
         lang = detect(text)
-        print(f"🌐 Detected language: {lang}")
         tool = LanguageTool(lang)
-        matches = tool.check(text[:20000])  # Cap check to 20k characters
-        print(f"✅ Grammar check complete. Found {len(matches)} issues.")
+        matches = tool.check(text[:20000])  # Limit to first 20K characters
         issues = []
         for match in matches:
             issue = f"• Line {match.context_offset}: {match.message} — Suggestion: {', '.join(match.replacements)}"
             issues.append(issue)
         return issues
     except Exception as e:
-        print(f"❌ Grammar check failed: {e}")
-        return ["⚠️ Grammar check failed."]
+        return [f"⚠️ Grammar check failed: {e}"]
 
 async def run_check(urls):
-    print("🔥 run_check() started")
+    print("🔥 Starting full site check...")
     results = []
 
     async with async_playwright() as p:
@@ -67,12 +63,35 @@ async def run_check(urls):
         page = await browser.new_page()
 
         for url in urls:
-            print(f"➡️ Visiting: {url}")
             section = [f"🔗 URL: {url}"]
 
             try:
                 link_issues = await check_links(page, url)
-                section.append("🔗 Broken Links:")
+                section.append("🔗 Link Check Results:")
+                section.extend(link_issues if link_issues else ["✅ No broken links found."])
+            except Exception as e:
+                section.append(f"❌ Link check failed: {e}")
+
+            if ENABLE_GRAMMAR_CHECK:
+                try:
+                    await page.goto(url, timeout=15000)
+                    await page.wait_for_load_state('networkidle', timeout=10000)
+                    html = await page.content()
+                    text = clean_html_text(html)
+                    grammar_issues = grammar_check(text)
+                    section.append("📝 Grammar/Spelling Issues:")
+                    section.extend(grammar_issues if grammar_issues else ["✅ No grammar issues found."])
+                except Exception as e:
+                    section.append(f"⚠️ Grammar check failed for {url}: {e}")
+
+            results.append("\n".join(section))
+            print(f"✅ Completed: {url}")
+
+        await browser.close()
+        print("🏁 All pages checked.")
+
+    return results
+
 
 
 
