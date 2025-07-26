@@ -1,119 +1,79 @@
-import aiohttp
 import asyncio
+import httpx
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
+from langdetect import detect
 from language_tool_python import LanguageTool
+import re
 
-URLS_TO_CHECK = [
-    "https://quickbookstraining.com/",
-    "https://quickbookstraining.com/live-quickbooks-help",
-    "https://quickbookstraining.com/quickbooks-courses",
-    "https://quickbookstraining.com/quickbooks-classes",
-    "https://quickbookstraining.com/plans-and-pricing",
-    "https://quickbookstraining.com/about-us",
-    "https://quickbookstraining.com/contact-us",
-    "https://quickbookstraining.com/quickbooks-certification",
-    "https://quickbookstraining.com/quickbooks-online-certification",
-    "https://quickbookstraining.com/quickbooks-desktop-certification",
-    "https://quickbookstraining.com/quickbooks-bookkeeping-certification",
-    "https://quickbookstraining.com/quickbooks-certification-online",
-    "https://quickbookstraining.com/quickbooks-certification-exam",
-    "https://quickbookstraining.com/terms-and-conditions",
-    "https://quickbookstraining.com/privacy-policy",
-    "https://quickbookstraining.com/learn-quickbooks"
-]
+# Grammar checking remains ON
+ENABLE_GRAMMAR_CHECK = True
 
-tool = LanguageTool('en-US')  # Use local server instead of remote API
-
-def format_grammar_results(matches):
-    if not matches:
-        return "✅ No grammar or spelling issues found."
-    output = ["📝 **Grammar/Spelling Issues Found:**"]
-    for match in matches:
-        location = f"• Issue: {match.message}\n  Suggestion: {', '.join(match.replacements)}\n  Context: {match.context.text}\n"
-        output.append(location)
-    return "\n".join(output)
-
-def format_tech_issues(broken_links, bad_toggles):
-    lines = []
-    if not broken_links:
-        lines.append("✅ No broken links found.")
-    else:
-        lines.append("🚨 **Broken Links Found:**")
-        for link in broken_links:
-            lines.append(f"• {link}")
-
-    if not bad_toggles:
-        lines.append("✅ No broken dropdowns found.")
-    else:
-        lines.append("🚨 **Broken Dropdowns Found:**")
-        for toggle in bad_toggles:
-            lines.append(f"• {toggle}")
-
-    return "\n".join(lines)
-
-async def check_links_and_dropdowns(page):
+async def check_links(page, url):
     broken_links = []
-    broken_toggles = []
+    try:
+        await page.goto(url, timeout=15000)
+        print(f"🔍 Checking links on: {url}")
+        await page.wait_for_load_state('networkidle', timeout=10000)
 
-    anchors = await page.query_selector_all("a")
-    hrefs = [await a.get_attribute("href") for a in anchors if await a.get_attribute("href")]
-    hrefs = [href for href in hrefs if href.startswith("http")]
+        content = await page.content()
+        soup = BeautifulSoup(content, 'html.parser')
 
-    async with aiohttp.ClientSession() as session:
-        for href in hrefs:
+        anchors = soup.find_all('a', href=True)
+        for anchor in anchors:
+            href = anchor['href']
+            if href.startswith("mailto:") or href.startswith("tel:"):
+                continue
             try:
-                async with session.get(href, timeout=10) as resp:
-                    if resp.status >= 400:
-                        broken_links.append(href)
-            except Exception:
-                broken_links.append(href)
+                async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
+                    r = await client.get(href if href.startswith("http") else url.rstrip("/") + "/" + href.lstrip("/"))
+                    if r.status_code >= 400:
+                        broken_links.append(f"{href} -> Status {r.status_code}")
+            except Exception as e:
+                broken_links.append(f"{href} -> ERROR: {str(e)}")
+    except Exception as e:
+        broken_links.append(f"{url} (page load error): {str(e)}")
+    return broken_links
 
-    toggles = await page.query_selector_all(".dropdown-toggle, .accordion-toggle, .collapse-toggle")
-    for toggle in toggles:
-        try:
-            await toggle.click()
-            await asyncio.sleep(0.5)
-            visible = await toggle.is_visible()
-            if not visible:
-                broken_toggles.append("Dropdown didn't expand properly")
-        except Exception:
-            broken_toggles.append("Error interacting with dropdown")
+def clean_html_text(html):
+    soup = BeautifulSoup(html, 'html.parser')
+    for script in soup(["script", "style", "noscript"]):
+        script.extract()
+    return soup.get_text(separator=" ", strip=True)
 
-    return broken_links, broken_toggles
+def grammar_check(text):
+    print("🧠 Starting grammar check...")
+    try:
+        lang = detect(text)
+        print(f"🌐 Detected language: {lang}")
+        tool = LanguageTool(lang)
+        matches = tool.check(text[:20000])  # Cap check to 20k characters
+        print(f"✅ Grammar check complete. Found {len(matches)} issues.")
+        issues = []
+        for match in matches:
+            issue = f"• Line {match.context_offset}: {match.message} — Suggestion: {', '.join(match.replacements)}"
+            issues.append(issue)
+        return issues
+    except Exception as e:
+        print(f"❌ Grammar check failed: {e}")
+        return ["⚠️ Grammar check failed."]
 
 async def run_check(urls):
-    report_sections = []
+    print("🔥 run_check() started")
+    results = []
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
+        page = await browser.new_page()
 
         for url in urls:
-            page = await context.new_page()
+            print(f"➡️ Visiting: {url}")
+            section = [f"🔗 URL: {url}"]
+
             try:
-                await page.goto(url)
-                await asyncio.sleep(2)
-                html = await page.content()
+                link_issues = await check_links(page, url)
+                section.append("🔗 Broken Links:")
 
-                soup = BeautifulSoup(html, "html.parser")
-                visible_text = soup.get_text()
-                matches = tool.check(visible_text)
-
-                broken_links, bad_toggles = await check_links_and_dropdowns(page)
-
-                report_sections.append(f"🔗 **URL:** {url}\n")
-                report_sections.append(format_grammar_results(matches))
-                report_sections.append("\n")
-                report_sections.append(format_tech_issues(broken_links, bad_toggles))
-                report_sections.append("\n---\n")
-
-            except Exception as e:
-                report_sections.append(f"❌ Failed to check {url}: {e}\n---\n")
-
-        await browser.close()
-
-    return report_sections
 
 
 
