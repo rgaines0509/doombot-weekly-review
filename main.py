@@ -39,18 +39,8 @@ async def main():
         results = await asyncio.wait_for(run_check(URLS_TO_CHECK), timeout=300)
     except asyncio.TimeoutError:
         safe_print("❌ Timeout: Website check took longer than 5 minutes.")
-        results = ["⚠️ ERROR: The website check timed out after 5 minutes."]
+        results = ["⚠️ ERROR: The website chec]()
 
-    markdown = format_report(results)
-
-    # Save locally for GitHub Actions artifact
-    with open("weekly_report.md", "w", encoding="utf-8", errors="ignore") as f:
-        f.write(markdown)
-
-    safe_print("✅ Report saved as weekly_report.md")
-
-if __name__ == "__main__":
-    asyncio.run(main())
 
 
 
